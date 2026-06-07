@@ -1,25 +1,58 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../application/engagement_cubit.dart';
 import '../../application/game_cubit.dart';
 import '../../application/game_state.dart';
 import '../../domain/models/board_state.dart';
+import '../../domain/models/cosmetic.dart';
+import '../../infrastructure/storage_service.dart';
 import '../../domain/models/difficulty.dart';
 import '../../infrastructure/ad_service.dart';
+import '../../infrastructure/notification_service.dart';
 import '../widgets/banner_slot.dart';
 import '../widgets/board_widget.dart';
+import '../widgets/hint_button.dart';
 import '../widgets/moves_counter.dart';
 import '../widgets/rewarded_dialog.dart';
+import '../widgets/streak_banner.dart';
 import 'score_share_screen.dart';
 
-class GameScreen extends StatelessWidget {
+class GameScreen extends StatefulWidget {
   final AdService adService;
+
+  /// Phase 4 engagement state (streak banner, cosmetic, newly-unlocked badges).
+  final EngagementCubit? engagement;
+
+  /// Unused directly here today (rescheduling happens on return to tier select)
+  /// but accepted for symmetry / future use.
+  final NotificationService? notifications;
 
   /// The player's friend code, when online. Passed to [ScoreShareScreen] so the
   /// share card carries an invite link and the "Invite a friend" CTA appears.
   final String? friendCode;
 
-  const GameScreen({super.key, required this.adService, this.friendCode});
+  const GameScreen({
+    super.key,
+    required this.adService,
+    this.engagement,
+    this.notifications,
+    this.friendCode,
+  });
+
+  @override
+  State<GameScreen> createState() => _GameScreenState();
+}
+
+class _GameScreenState extends State<GameScreen> {
+  /// Last revealed next-drop tier (null until a hint is used). Read-only display.
+  int? _hintTier;
+
+  AdService get adService => widget.adService;
+  String? get friendCode => widget.friendCode;
+
+  Cosmetic get _cosmetic =>
+      widget.engagement?.state.selectedCosmetic ?? Cosmetic.classic;
 
   @override
   Widget build(BuildContext context) {
@@ -37,6 +70,11 @@ class GameScreen extends StatelessWidget {
                       _promptRewarded(context, cubit);
                     }
                   }
+                  if (state is GamePlaying) {
+                    // A new board state has dropped the previously-hinted tile;
+                    // clear the stale reveal.
+                    if (_hintTier != null) setState(() => _hintTier = null);
+                  }
                 },
                 builder: (context, state) {
                   return switch (state) {
@@ -46,15 +84,7 @@ class GameScreen extends StatelessWidget {
                     GamePlaying(:final board, :final difficulty) =>
                       _buildPlaying(context, board, difficulty),
                     GameOverShowScore(:final board, :final date, :final stats) =>
-                      ScoreShareScreen(
-                        board: board,
-                        date: date,
-                        stats: stats,
-                        friendCode: friendCode,
-                        canOfferAd: context.read<GameCubit>().canOfferAd,
-                        onWatchAd: () =>
-                            _watchRewarded(context, context.read<GameCubit>()),
-                      ),
+                      _buildResult(context, board, date, stats),
                   };
                 },
               ),
@@ -66,12 +96,48 @@ class GameScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildResult(BuildContext context, BoardState board, String date,
+      LifetimeStats stats) {
+    final engagement = widget.engagement;
+    final newly = engagement?.state.newlyUnlocked ?? const {};
+    // Surface freshly-unlocked badges once, then clear them.
+    if (newly.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        engagement?.acknowledgeNewlyUnlocked();
+      });
+    }
+    return ScoreShareScreen(
+      board: board,
+      date: date,
+      stats: stats,
+      friendCode: friendCode,
+      newlyUnlocked: newly,
+      canOfferAd: context.read<GameCubit>().canOfferAd,
+      onWatchAd: () => _watchRewarded(context, context.read<GameCubit>()),
+    );
+  }
+
   Widget _buildPlaying(
       BuildContext context, BoardState board, Difficulty difficulty) {
+    final cubit = context.read<GameCubit>();
+    final engagement = widget.engagement;
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
+          if (engagement != null)
+            BlocBuilder<EngagementCubit, EngagementState>(
+              bloc: engagement,
+              builder: (context, eng) {
+                if (eng.dailyActiveStreak <= 0) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: StreakBanner(
+                      streak: eng.dailyActiveStreak,
+                      freezeTokens: eng.freezeTokens),
+                );
+              },
+            ),
           Text(difficulty.label.toUpperCase(),
               style: const TextStyle(
                   color: Colors.white54,
@@ -81,22 +147,53 @@ class GameScreen extends StatelessWidget {
           const SizedBox(height: 8),
           MovesCounter(
               movesRemaining: board.movesRemaining, score: board.score),
-          const SizedBox(height: 24),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              HintButton(
+                enabled: cubit.canUseHint,
+                onTap: () => _watchHint(context, cubit),
+              ),
+              if (_hintTier != null) ...[
+                const SizedBox(width: 12),
+                HintReveal(tier: _hintTier!),
+              ],
+            ],
+          ),
+          const SizedBox(height: 12),
           Expanded(
             child: Center(
               child: AspectRatio(
                 aspectRatio: 1,
                 child: BoardWidget(
                   board: board,
-                  onMerge: (from, to) => context
-                      .read<GameCubit>()
-                      .merge(fromIndex: from, toIndex: to),
+                  cosmetic: _cosmetic,
+                  onMerge: (from, to) =>
+                      cubit.merge(fromIndex: from, toIndex: to),
                 ),
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  /// Show a rewarded ad; on reward, reveal the next drop tier (read-only).
+  void _watchHint(BuildContext context, GameCubit cubit) {
+    adService.showRewarded(
+      onReward: () {
+        final tier = cubit.revealNextDropAfterReward();
+        if (tier != null && mounted) setState(() => _hintTier = tier);
+      },
+      onUnavailable: () {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No ad available right now.')),
+          );
+        }
+      },
     );
   }
 

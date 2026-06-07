@@ -1,26 +1,24 @@
 import 'package:flutter/material.dart';
 
+import '../../domain/models/cosmetic.dart';
+
 /// Maps a tier to its tile color. Tier 0 (empty) uses a translucent slot color.
+///
+/// Phase 4: tile colors are now driven by the selectable [Cosmetic] palettes
+/// (see `domain/models/cosmetic.dart`). The static [colorForTier] keeps the
+/// original `classic` ramp as the default so existing callers/tests are
+/// unaffected; pass a [Cosmetic] to render an unlocked theme.
 class TilePalette {
   const TilePalette._();
 
-  static const _colors = <Color>[
-    Color(0x14FFFFFF), // 0 empty slot
-    Color(0xFF3B82F6), // 1
-    Color(0xFF06B6D4), // 2
-    Color(0xFF10B981), // 3
-    Color(0xFF84CC16), // 4
-    Color(0xFFEAB308), // 5
-    Color(0xFFF59E0B), // 6
-    Color(0xFFF97316), // 7
-    Color(0xFFEF4444), // 8
-    Color(0xFFEC4899), // 9
-    Color(0xFFA855F7), // 10
-    Color(0xFF7C3AED), // 11 (2048)
-  ];
+  /// Default (classic) tier color. Backward-compatible with Phase 1 callers.
+  static Color colorForTier(int tier) => colorFor(Cosmetic.classic, tier);
 
-  static Color colorForTier(int tier) =>
-      _colors[tier.clamp(0, _colors.length - 1)];
+  /// Tier color for a specific cosmetic palette.
+  static Color colorFor(Cosmetic cosmetic, int tier) {
+    final ramp = cosmetic.colors;
+    return Color(ramp[tier.clamp(0, ramp.length - 1)]);
+  }
 
   static Color textColorForTier(int tier) => Colors.white;
 }

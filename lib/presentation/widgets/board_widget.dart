@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 
 import '../../domain/constants.dart';
 import '../../domain/models/board_state.dart';
+import '../../domain/models/cosmetic.dart';
 import '../../domain/models/tile.dart';
+import '../theme/tile_palette.dart';
 import 'grid_cell_widget.dart';
 
 /// Renders the 5×5 board as a static slot grid with live tiles floating above
@@ -14,7 +16,15 @@ class BoardWidget extends StatelessWidget {
   final BoardState board;
   final void Function(int fromIndex, int toIndex) onMerge;
 
-  const BoardWidget({super.key, required this.board, required this.onMerge});
+  /// Selected tile theme. Defaults to classic.
+  final Cosmetic cosmetic;
+
+  const BoardWidget({
+    super.key,
+    required this.board,
+    required this.onMerge,
+    this.cosmetic = Cosmetic.classic,
+  });
 
   bool _isMergeable(int fromIndex, int toIndex) {
     if (fromIndex == toIndex) return false;
@@ -46,7 +56,7 @@ class BoardWidget extends StatelessWidget {
           children.add(Positioned(
             left: pos.dx,
             top: pos.dy,
-            child: GridCellWidget(tile: null, size: cell),
+            child: GridCellWidget(tile: null, size: cell, cosmetic: cosmetic),
           ));
         }
 
@@ -63,7 +73,8 @@ class BoardWidget extends StatelessWidget {
             top: pos.dy,
             width: cell,
             height: cell,
-            child: _DraggableTile(index: i, tile: tile, size: cell),
+            child: _DraggableTile(
+                index: i, tile: tile, size: cell, cosmetic: cosmetic),
           ));
         }
 
@@ -108,12 +119,18 @@ class _DraggableTile extends StatelessWidget {
   final int index;
   final Tile tile;
   final double size;
+  final Cosmetic cosmetic;
 
-  const _DraggableTile({required this.index, required this.tile, required this.size});
+  const _DraggableTile({
+    required this.index,
+    required this.tile,
+    required this.size,
+    required this.cosmetic,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final face = GridCellWidget(tile: tile, size: size);
+    final face = GridCellWidget(tile: tile, size: size, cosmetic: cosmetic);
     // The feedback intentionally omits the text label so that find.text()
     // in tests (and in the gesture pipeline) does not find a third instance
     // of the tile value floating in the overlay during a drag gesture.
@@ -121,7 +138,7 @@ class _DraggableTile extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: _tileColor(tile.tier),
+        color: TilePalette.colorFor(cosmetic, tile.tier),
         borderRadius: BorderRadius.circular(size * 0.16),
       ),
     );
@@ -134,27 +151,5 @@ class _DraggableTile extends StatelessWidget {
       childWhenDragging: Opacity(opacity: 0.25, child: face),
       child: face,
     );
-  }
-
-  /// Returns the same colour that [TilePalette.colorForTier] would return,
-  /// duplicated here so the feedback widget stays self-contained.
-  static Color _tileColor(int tier) {
-    // Matches TilePalette — just needs to be visually consistent.
-    const colors = <Color>[
-      Color(0xFF2D3448), // 0 – empty slot (unused here)
-      Color(0xFF5D6B8A), // tier 1
-      Color(0xFF4CAF82), // tier 2
-      Color(0xFF43A0F5), // tier 3
-      Color(0xFF9C6FE4), // tier 4
-      Color(0xFFF5A623), // tier 5
-      Color(0xFFE8445A), // tier 6
-      Color(0xFF00BCD4), // tier 7
-      Color(0xFFFF7043), // tier 8
-      Color(0xFF8BC34A), // tier 9
-      Color(0xFFE040FB), // tier 10
-      Color(0xFFFFD700), // tier 11
-    ];
-    if (tier < 0 || tier >= colors.length) return colors[0];
-    return colors[tier];
   }
 }

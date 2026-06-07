@@ -39,15 +39,26 @@ class GameCubit extends Cubit<GameState> {
   /// Optional online submit hook. Null when offline / not signed in.
   final SubmitRun? onSubmitRun;
 
+  /// Optional completion hook (Phase 4). Fired once per locked day, after stats
+  /// are recorded, so the engagement layer can advance the headline streak,
+  /// evaluate achievements, and reschedule notifications. Decoupled (a plain
+  /// callback) so the cubit stays plugin-free and unit-testable.
+  final Future<void> Function()? onTierCompleted;
+
   late Difficulty _difficulty;
   late String _date;
   late List<int> _dropTiers;
   late Prng _landing;
 
+  /// Rewarded-hint usage this cubit lifetime (one tier's day). Gates the
+  /// per-day cap on the reveal-next-drop hint.
+  int _hintsUsed = 0;
+
   GameCubit({
     required this.storage,
     String Function()? todayProvider,
     this.onSubmitRun,
+    this.onTierCompleted,
   })  : todayProvider = todayProvider ?? utcToday,
         super(const GameInitial());
 
@@ -113,6 +124,7 @@ class GameCubit extends Cubit<GameState> {
 
     if (done) {
       final stats = await _recordCompletion(board);
+      await _fireCompletionHook();
       emit(GameOverShowScore(
           board: board, date: _date, difficulty: _difficulty, stats: stats));
       // Submit to the leaderboard only when the day is genuinely terminal:
@@ -126,6 +138,52 @@ class GameCubit extends Cubit<GameState> {
       }
     } else {
       emit(GamePlaying(board: board, difficulty: _difficulty));
+    }
+  }
+
+  /// Whether another rewarded hint may be shown today (per-tier-day cap).
+  bool get canUseHint {
+    final s = state;
+    return s is GamePlaying &&
+        _hintsUsed < kMaxHintsPerDay &&
+        s.board.dropIndex < _dropTiers.length;
+  }
+
+  /// The next drop tier the seed will deliver, or null if none remain.
+  /// READ-ONLY: derived purely from the seed-fixed [_dropTiers] schedule indexed
+  /// by the board's current `dropIndex`. It does NOT read or write board state
+  /// beyond `dropIndex`, and emits no new state — so it cannot affect the run or
+  /// leaderboard fairness. Returns null if the player has no live board.
+  int? peekNextDropTier() {
+    final s = state;
+    if (s is! GamePlaying) return null;
+    final i = s.board.dropIndex;
+    if (i < 0 || i >= _dropTiers.length) return null;
+    return _dropTiers[i];
+  }
+
+  /// Consume a rewarded-hint use and return the next drop tier. Call AFTER the
+  /// rewarded ad grants its reward. Returns null (and consumes nothing) if no
+  /// hint is available. FAIRNESS: this never mutates [BoardState]; it only reads
+  /// the seed-fixed drop schedule and bumps an ad-frequency counter.
+  int? revealNextDropAfterReward() {
+    if (!canUseHint) return null;
+    _hintsUsed++;
+    return peekNextDropTier();
+  }
+
+  bool _completionFired = false;
+
+  /// Fire the Phase 4 completion hook at most once per cubit lifetime. Off the
+  /// critical path: a failing hook never blocks the result screen.
+  Future<void> _fireCompletionHook() async {
+    final hook = onTierCompleted;
+    if (hook == null || _completionFired) return;
+    _completionFired = true;
+    try {
+      await hook();
+    } catch (_) {
+      // Engagement bookkeeping is best-effort; play is never blocked by it.
     }
   }
 

@@ -68,4 +68,34 @@ void main() {
     const stats = LifetimeStats(streak: 1, lastCompletedDate: '2026-06-06', bestScore: 10, bestTier: 3);
     expect(LifetimeStats.fromJson(jsonDecode(jsonEncode(stats.toJson())) as Map<String, dynamic>).bestScore, 10);
   });
+
+  test('PlayerProfile persists and reloads via Hive (Phase 4)', () async {
+    final s = HiveStorageService();
+    await s.init();
+    // Empty by default (migration-free).
+    expect(s.loadProfile().dailyActiveStreak, 0);
+    expect(s.loadProfile().selectedCosmetic, 'classic');
+
+    const profile = PlayerProfile(
+      dailyActiveStreak: 7,
+      lastActiveDate: '2026-06-07',
+      unlockedAchievements: {'sevenDayStreak'},
+      selectedCosmetic: 'ocean',
+      adUnlockedCosmetics: {'neon'},
+      notificationsEnabled: true,
+      reminderMinutes: 20 * 60,
+      bestRankByDifficulty: {'hard': 3},
+    );
+    await s.saveProfile(profile);
+
+    final loaded = s.loadProfile();
+    expect(loaded.dailyActiveStreak, 7);
+    expect(loaded.lastActiveDate, '2026-06-07');
+    expect(loaded.unlockedAchievements, {'sevenDayStreak'});
+    expect(loaded.selectedCosmetic, 'ocean');
+    expect(loaded.adUnlockedCosmetics, {'neon'});
+    expect(loaded.notificationsEnabled, isTrue);
+    expect(loaded.reminderMinutes, 20 * 60);
+    expect(loaded.bestRankByDifficulty, {'hard': 3});
+  });
 }

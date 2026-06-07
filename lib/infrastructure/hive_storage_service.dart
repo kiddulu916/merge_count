@@ -22,6 +22,8 @@ class HiveStorageService implements StorageService {
 
   static String _statsKey(Difficulty difficulty) => 'stats:${difficulty.name}';
 
+  static const _profileKey = 'profile';
+
   @override
   Future<void> init() async {
     _box = await Hive.openBox<String>(_boxName);
@@ -59,5 +61,22 @@ class HiveStorageService implements StorageService {
   @override
   Future<void> saveStats(Difficulty difficulty, LifetimeStats stats) async {
     await _box.put(_statsKey(difficulty), jsonEncode(stats.toJson()));
+  }
+
+  @override
+  PlayerProfile loadProfile() {
+    final raw = _box.get(_profileKey);
+    if (raw == null) return PlayerProfile.empty;
+    try {
+      return PlayerProfile.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    } catch (_) {
+      // Corrupt profile: treat as empty (migration-free).
+      return PlayerProfile.empty;
+    }
+  }
+
+  @override
+  Future<void> saveProfile(PlayerProfile profile) async {
+    await _box.put(_profileKey, jsonEncode(profile.toJson()));
   }
 }

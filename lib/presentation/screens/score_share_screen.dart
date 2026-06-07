@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../domain/engine/share_grid_builder.dart';
+import '../../domain/models/achievement.dart';
 import '../../domain/models/board_state.dart';
 import '../../infrastructure/friends_service.dart';
 import '../../infrastructure/storage_service.dart';
@@ -22,6 +23,9 @@ class ScoreShareScreen extends StatelessWidget {
   /// includes an invite link and an "Invite a friend" CTA is shown.
   final String? friendCode;
 
+  /// Achievements unlocked by THIS run (Phase 4). Celebrated once here.
+  final Set<Achievement> newlyUnlocked;
+
   /// Seam: native share. Defaults to [share_plus]. Tests inject a fake.
   final Future<void> Function(String text)? shareText;
 
@@ -33,6 +37,7 @@ class ScoreShareScreen extends StatelessWidget {
     required this.canOfferAd,
     required this.onWatchAd,
     this.friendCode,
+    this.newlyUnlocked = const {},
     this.shareText,
   });
 
@@ -66,6 +71,10 @@ class ScoreShareScreen extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               _smallStat('BEST EVER', '${stats.bestScore}'),
+              if (newlyUnlocked.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                _achievementsBanner(),
+              ],
               const SizedBox(height: 24),
               if (canOfferAd)
                 FilledButton.tonal(
@@ -130,6 +139,37 @@ class ScoreShareScreen extends StatelessWidget {
   /// [shareText] seam is injected.
   static Future<void> _nativeShare(String text) =>
       Share.share(text, subject: 'Merge Loop');
+
+  Widget _achievementsBanner() => Container(
+        key: const Key('newly-unlocked-banner'),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1B1E2A),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.amberAccent, width: 1.5),
+        ),
+        child: Column(
+          children: [
+            const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.emoji_events, color: Colors.amberAccent, size: 20),
+                SizedBox(width: 6),
+                Text('Achievement unlocked!',
+                    style: TextStyle(
+                        color: Colors.amberAccent,
+                        fontWeight: FontWeight.w800)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            for (final a in newlyUnlocked)
+              Text(a.label,
+                  key: Key('unlocked-${a.name}'),
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      );
 
   Widget _bigStat(String label, String value) => Column(
         children: [
