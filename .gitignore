@@ -53,3 +53,13 @@ app.*.map.json
 # Custom / editor
 .superpowers/
 .claude/
+
+# Node tooling (Supabase CLI is a local devDependency; keep package*.json, ignore deps)
+node_modules/
+
+# Secrets / Supabase local state (NEVER commit keys)
+.env
+.env.*
+!.env.example
+supabase/.temp/
+supabase/.branches/
