@@ -1,4 +1,7 @@
 # Miscellaneous
+.cursor/
+.superpowers/
+.cursor/mcp.json
 *.class
 *.log
 *.pyc
