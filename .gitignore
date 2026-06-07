@@ -45,6 +45,11 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Gradle build outputs
+/android/.gradle/
+/android/build/
+/android/app/build/
+
 # Custom / editor
 .superpowers/
 .cursor/
