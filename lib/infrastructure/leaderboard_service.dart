@@ -95,4 +95,29 @@ class LeaderboardService {
             LeaderboardEntry.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
   }
+
+  /// Fetch an extended period leaderboard (weekly / monthly / all-time) for a
+  /// tier via the read-only `leaderboard_period` RPC. The period total is the
+  /// SUM of daily bests over `[from, to]`. The RPC returns a `total` column; it
+  /// is mapped onto [LeaderboardEntry.score] so the UI row widget is reused.
+  Future<List<LeaderboardEntry>> fetchPeriod({
+    required Difficulty difficulty,
+    required String from,
+    required String to,
+  }) async {
+    final rows = await _rpc('leaderboard_period', {
+      'p_diff': difficulty.name,
+      'p_from': from,
+      'p_to': to,
+    });
+    return rows.map((e) {
+      final m = Map<String, dynamic>.from(e as Map);
+      return LeaderboardEntry(
+        rank: (m['rank'] as num).toInt(),
+        displayName: m['display_name'] as String,
+        score: (m['total'] as num).toInt(),
+        isMe: (m['is_me'] as bool?) ?? false,
+      );
+    }).toList();
+  }
 }

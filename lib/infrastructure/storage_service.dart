@@ -32,33 +32,44 @@ class GameSnapshot {
 
 /// Lifetime, cross-day stats for a single difficulty tier. Streaks/best are
 /// independent per tier (a Hard streak does not affect an Easy streak).
+///
+/// [streakFreezeTokens] (Phase 4) shield this tier's streak from a single missed
+/// UTC day; capped at [kMaxStreakFreezeTokens] to prevent infinite shielding.
 class LifetimeStats {
   final int streak;
   final String? lastCompletedDate;
   final int bestScore;
   final int bestTier;
+  final int streakFreezeTokens;
 
   const LifetimeStats({
     required this.streak,
     required this.lastCompletedDate,
     required this.bestScore,
     required this.bestTier,
+    this.streakFreezeTokens = 0,
   });
 
   static const empty = LifetimeStats(
-      streak: 0, lastCompletedDate: null, bestScore: 0, bestTier: 0);
+      streak: 0,
+      lastCompletedDate: null,
+      bestScore: 0,
+      bestTier: 0,
+      streakFreezeTokens: 0);
 
   LifetimeStats copyWith({
     int? streak,
     String? lastCompletedDate,
     int? bestScore,
     int? bestTier,
+    int? streakFreezeTokens,
   }) =>
       LifetimeStats(
         streak: streak ?? this.streak,
         lastCompletedDate: lastCompletedDate ?? this.lastCompletedDate,
         bestScore: bestScore ?? this.bestScore,
         bestTier: bestTier ?? this.bestTier,
+        streakFreezeTokens: streakFreezeTokens ?? this.streakFreezeTokens,
       );
 
   Map<String, dynamic> toJson() => {
@@ -66,6 +77,7 @@ class LifetimeStats {
         'lastCompletedDate': lastCompletedDate,
         'bestScore': bestScore,
         'bestTier': bestTier,
+        'streakFreezeTokens': streakFreezeTokens,
       };
 
   static LifetimeStats fromJson(Map<String, dynamic> j) => LifetimeStats(
@@ -73,8 +85,108 @@ class LifetimeStats {
         lastCompletedDate: j['lastCompletedDate'] as String?,
         bestScore: j['bestScore'] as int,
         bestTier: j['bestTier'] as int,
+        // Absent in pre-Phase-4 stats: default to 0 (migration-free).
+        streakFreezeTokens: (j['streakFreezeTokens'] as int?) ?? 0,
       );
 }
+
+/// Cross-tier player profile (Phase 4): the headline daily-active streak,
+/// unlocked achievements, selected + ad-unlocked cosmetics, and local
+/// notification preferences. Single record (not per-tier).
+class PlayerProfile {
+  /// "Any tier today" headline streak.
+  final int dailyActiveStreak;
+
+  /// UTC date of the last day any tier was completed (drives the headline
+  /// streak transition). Null until the first completion.
+  final String? lastActiveDate;
+
+  /// Achievement enum `name`s already unlocked (stable storage tokens).
+  final Set<String> unlockedAchievements;
+
+  /// Currently selected cosmetic enum `name`.
+  final String selectedCosmetic;
+
+  /// Cosmetic enum `name`s unlocked specifically via rewarded ad.
+  final Set<String> adUnlockedCosmetics;
+
+  /// Local-notification preferences.
+  final bool notificationsEnabled;
+
+  /// Reminder time as minutes past local midnight (e.g. 1140 == 19:00).
+  final int reminderMinutes;
+
+  /// Best (lowest) leaderboard rank ever observed per difficulty `name`. Only
+  /// populated lazily after a leaderboard fetch (powers rank-based achievements).
+  final Map<String, int> bestRankByDifficulty;
+
+  const PlayerProfile({
+    this.dailyActiveStreak = 0,
+    this.lastActiveDate,
+    this.unlockedAchievements = const {},
+    this.selectedCosmetic = 'classic',
+    this.adUnlockedCosmetics = const {},
+    this.notificationsEnabled = false,
+    this.reminderMinutes = 19 * 60,
+    this.bestRankByDifficulty = const {},
+  });
+
+  static const empty = PlayerProfile();
+
+  PlayerProfile copyWith({
+    int? dailyActiveStreak,
+    String? lastActiveDate,
+    Set<String>? unlockedAchievements,
+    String? selectedCosmetic,
+    Set<String>? adUnlockedCosmetics,
+    bool? notificationsEnabled,
+    int? reminderMinutes,
+    Map<String, int>? bestRankByDifficulty,
+  }) =>
+      PlayerProfile(
+        dailyActiveStreak: dailyActiveStreak ?? this.dailyActiveStreak,
+        lastActiveDate: lastActiveDate ?? this.lastActiveDate,
+        unlockedAchievements: unlockedAchievements ?? this.unlockedAchievements,
+        selectedCosmetic: selectedCosmetic ?? this.selectedCosmetic,
+        adUnlockedCosmetics: adUnlockedCosmetics ?? this.adUnlockedCosmetics,
+        notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
+        reminderMinutes: reminderMinutes ?? this.reminderMinutes,
+        bestRankByDifficulty:
+            bestRankByDifficulty ?? this.bestRankByDifficulty,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'dailyActiveStreak': dailyActiveStreak,
+        'lastActiveDate': lastActiveDate,
+        'unlockedAchievements': unlockedAchievements.toList(),
+        'selectedCosmetic': selectedCosmetic,
+        'adUnlockedCosmetics': adUnlockedCosmetics.toList(),
+        'notificationsEnabled': notificationsEnabled,
+        'reminderMinutes': reminderMinutes,
+        'bestRankByDifficulty': bestRankByDifficulty,
+      };
+
+  static PlayerProfile fromJson(Map<String, dynamic> j) => PlayerProfile(
+        dailyActiveStreak: (j['dailyActiveStreak'] as int?) ?? 0,
+        lastActiveDate: j['lastActiveDate'] as String?,
+        unlockedAchievements:
+            ((j['unlockedAchievements'] as List?) ?? const [])
+                .map((e) => e as String)
+                .toSet(),
+        selectedCosmetic: (j['selectedCosmetic'] as String?) ?? 'classic',
+        adUnlockedCosmetics: ((j['adUnlockedCosmetics'] as List?) ?? const [])
+            .map((e) => e as String)
+            .toSet(),
+        notificationsEnabled: (j['notificationsEnabled'] as bool?) ?? false,
+        reminderMinutes: (j['reminderMinutes'] as int?) ?? 19 * 60,
+        bestRankByDifficulty: ((j['bestRankByDifficulty'] as Map?) ?? const {})
+            .map((k, v) => MapEntry(k as String, (v as num).toInt())),
+      );
+}
+
+/// Cap on streak-freeze tokens a single tier can bank (prevents infinite
+/// shielding). One token bridges exactly one missed UTC day.
+const int kMaxStreakFreezeTokens = 3;
 
 /// Local persistence boundary. Snapshots and stats are keyed by
 /// `(date, difficulty)` / `difficulty`. The Hive implementation lives in
@@ -85,11 +197,16 @@ abstract class StorageService {
   Future<void> saveSnapshot(GameSnapshot snapshot); // carries date + difficulty
   LifetimeStats loadStats(Difficulty difficulty);
   Future<void> saveStats(Difficulty difficulty, LifetimeStats stats);
+
+  /// Cross-tier profile (headline streak, achievements, cosmetics, notif prefs).
+  PlayerProfile loadProfile();
+  Future<void> saveProfile(PlayerProfile profile);
 }
 
 class InMemoryStorageService implements StorageService {
   final Map<String, GameSnapshot> _snapshots = {};
   final Map<String, LifetimeStats> _stats = {};
+  PlayerProfile _profile = PlayerProfile.empty;
 
   static String _snapKey(String date, Difficulty difficulty) =>
       '$date:${difficulty.name}';
@@ -113,5 +230,13 @@ class InMemoryStorageService implements StorageService {
   @override
   Future<void> saveStats(Difficulty difficulty, LifetimeStats stats) async {
     _stats[difficulty.name] = stats;
+  }
+
+  @override
+  PlayerProfile loadProfile() => _profile;
+
+  @override
+  Future<void> saveProfile(PlayerProfile profile) async {
+    _profile = profile;
   }
 }

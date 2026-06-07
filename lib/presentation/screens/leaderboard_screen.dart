@@ -10,6 +10,39 @@ import '../widgets/leaderboard_row.dart';
 /// Which board the user is viewing within a tier.
 enum LeaderboardScope { global, friends }
 
+/// Time period for the global board. Daily uses the per-day RPC; the rest use
+/// the read-only `leaderboard_period` aggregation (sum of daily bests).
+enum LeaderboardPeriod { daily, weekly, monthly, allTime }
+
+extension LeaderboardPeriodX on LeaderboardPeriod {
+  String get label => switch (this) {
+        LeaderboardPeriod.daily => 'Daily',
+        LeaderboardPeriod.weekly => 'Weekly',
+        LeaderboardPeriod.monthly => 'Monthly',
+        LeaderboardPeriod.allTime => 'All-time',
+      };
+
+  /// Inclusive [from, to] UTC date range for [today]. Daily collapses to a
+  /// single day; all-time spans from a fixed launch floor to today.
+  (String, String) range(String today) {
+    final t = DateTime.parse(today);
+    switch (this) {
+      case LeaderboardPeriod.daily:
+        return (today, today);
+      case LeaderboardPeriod.weekly:
+        return (_fmt(t.subtract(const Duration(days: 6))), today);
+      case LeaderboardPeriod.monthly:
+        return (_fmt(t.subtract(const Duration(days: 29))), today);
+      case LeaderboardPeriod.allTime:
+        // Launch floor; well before any real score exists.
+        return ('2020-01-01', today);
+    }
+  }
+
+  static String _fmt(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+}
+
 /// Per-tier daily leaderboard with tier tabs and a Global / Friends toggle.
 /// Highlights the player's own row.
 class LeaderboardScreen extends StatefulWidget {
@@ -43,6 +76,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
   LeaderboardScope _scope = LeaderboardScope.global;
+  LeaderboardPeriod _period = LeaderboardPeriod.daily;
 
   @override
   void initState() {
@@ -101,16 +135,38 @@ class _LeaderboardScreenState extends State<LeaderboardScreen>
                 onSelectionChanged: (s) => setState(() => _scope = s.first),
               ),
             ),
+          // Period tabs apply only to the global board (the friends RPC is
+          // daily-only). Hidden in Friends scope.
+          if (_scope == LeaderboardScope.global)
+            Padding(
+              padding: const EdgeInsets.only(left: 8, right: 8, bottom: 8),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SegmentedButton<LeaderboardPeriod>(
+                  key: const Key('lb-period-tabs'),
+                  segments: [
+                    for (final p in LeaderboardPeriod.values)
+                      ButtonSegment(value: p, label: Text(p.label)),
+                  ],
+                  selected: {_period},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (s) =>
+                      setState(() => _period = s.first),
+                ),
+              ),
+            ),
           Expanded(
             child: TabBarView(
               controller: _tabs,
               children: [
                 for (final d in Difficulty.values)
                   _TierBoard(
-                    key: ValueKey('board-${d.name}-${_scope.name}'),
+                    key: ValueKey(
+                        'board-${d.name}-${_scope.name}-${_period.name}'),
                     service: widget.service,
                     friendsService: widget.friendsService,
                     scope: _scope,
+                    period: _period,
                     difficulty: d,
                     date: widget.today(),
                   ),
@@ -127,6 +183,7 @@ class _TierBoard extends StatefulWidget {
   final LeaderboardService service;
   final FriendsService? friendsService;
   final LeaderboardScope scope;
+  final LeaderboardPeriod period;
   final Difficulty difficulty;
   final String date;
 
@@ -135,6 +192,7 @@ class _TierBoard extends StatefulWidget {
     required this.service,
     required this.friendsService,
     required this.scope,
+    required this.period,
     required this.difficulty,
     required this.date,
   });
@@ -162,8 +220,15 @@ class _TierBoardState extends State<_TierBoard>
       return widget.friendsService!
           .friendsLeaderboard(difficulty: widget.difficulty, date: widget.date);
     }
+    // Global scope: daily uses the per-day RPC; weekly/monthly/all-time use the
+    // read-only period aggregation (sum of daily bests).
+    if (widget.period == LeaderboardPeriod.daily) {
+      return widget.service
+          .fetch(difficulty: widget.difficulty, date: widget.date);
+    }
+    final (from, to) = widget.period.range(widget.date);
     return widget.service
-        .fetch(difficulty: widget.difficulty, date: widget.date);
+        .fetchPeriod(difficulty: widget.difficulty, from: from, to: to);
   }
 
   Future<void> _refresh() async {

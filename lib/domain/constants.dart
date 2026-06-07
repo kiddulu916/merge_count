@@ -20,6 +20,16 @@ const int kMovesPerDay = 30;
 const int kAdMoveReward = 3;
 const int kMaxAdContinuesPerDay = 3;
 
+/// Daily cap on the rewarded reveal-next-drop hint (Phase 4). The hint is
+/// read-only (it reveals seed-fixed info, never alters the board) so the cap is
+/// purely an ad-frequency control, not a fairness lever.
+const int kMaxHintsPerDay = 3;
+
+/// Daily cap on rewarded streak-freeze grants (Phase 4). One token bridges one
+/// missed UTC day; banked tokens are additionally capped by
+/// kMaxStreakFreezeTokens in storage.
+const int kMaxFreezeGrantsPerDay = 1;
+
 /// Maximum number of drops that can ever occur in one day.
 const int kMaxDrops = kMovesPerDay + kAdMoveReward * kMaxAdContinuesPerDay; // 39
 

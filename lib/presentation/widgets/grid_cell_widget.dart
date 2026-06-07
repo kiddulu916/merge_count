@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../domain/models/cosmetic.dart';
 import '../../domain/models/tile.dart';
 import '../theme/tile_palette.dart';
 
@@ -8,7 +9,15 @@ class GridCellWidget extends StatelessWidget {
   final Tile? tile;
   final double size;
 
-  const GridCellWidget({super.key, required this.tile, required this.size});
+  /// Selected tile theme. Defaults to classic (the original ramp).
+  final Cosmetic cosmetic;
+
+  const GridCellWidget({
+    super.key,
+    required this.tile,
+    required this.size,
+    this.cosmetic = Cosmetic.classic,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -17,7 +26,7 @@ class GridCellWidget extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: TilePalette.colorForTier(t?.tier ?? 0),
+        color: TilePalette.colorFor(cosmetic, t?.tier ?? 0),
         borderRadius: BorderRadius.circular(size * 0.16),
       ),
       alignment: Alignment.center,

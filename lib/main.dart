@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:timezone/data/latest_all.dart' as tzdata;
+import 'package:timezone/timezone.dart' as tz;
 
+import 'application/engagement_cubit.dart';
 import 'domain/models/friend.dart';
 import 'infrastructure/ad_service.dart';
 import 'infrastructure/auth_service.dart';
@@ -8,6 +12,7 @@ import 'infrastructure/deep_link_service.dart';
 import 'infrastructure/friends_service.dart';
 import 'infrastructure/hive_storage_service.dart';
 import 'infrastructure/leaderboard_service.dart';
+import 'infrastructure/notification_service.dart';
 import 'infrastructure/supabase_client.dart';
 import 'presentation/screens/display_name_screen.dart';
 import 'presentation/screens/tier_select_screen.dart';
@@ -21,6 +26,28 @@ Future<void> main() async {
 
   final adService = AdService();
   await adService.init();
+
+  // Phase 4 retention layer. Notifications are LOCAL only (\$0, no FCM). We init
+  // the plugin + timezone here but request OS permission lazily (after the first
+  // completion), never at cold launch.
+  tzdata.initializeTimeZones();
+  try {
+    tz.setLocalLocation(tz.getLocation(tz.local.name));
+  } catch (_) {
+    // tz.local defaults to UTC if the device zone can't be resolved; safe.
+  }
+  final notifPlugin = FlutterLocalNotificationsPlugin();
+  await notifPlugin.initialize(const InitializationSettings(
+    android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    iOS: DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    ),
+  ));
+  final notifications = NotificationService.plugin(notifPlugin);
+
+  final engagement = EngagementCubit(storage: storage)..load();
 
   // Online layer (Phase 2). Degrades gracefully: if Supabase isn't configured
   // (no --dart-define) or anon sign-in fails, the game still runs offline.
@@ -59,6 +86,8 @@ Future<void> main() async {
     leaderboard: leaderboard,
     friends: friends,
     deepLinks: deepLinks,
+    engagement: engagement,
+    notifications: notifications,
     needsDisplayName: needsDisplayName,
   ));
 }
@@ -70,12 +99,16 @@ class MergeLoopApp extends StatefulWidget {
   final LeaderboardService? leaderboard;
   final FriendsService? friends;
   final DeepLinkService? deepLinks;
+  final EngagementCubit engagement;
+  final NotificationService notifications;
   final bool needsDisplayName;
 
   const MergeLoopApp({
     super.key,
     required this.storage,
     required this.adService,
+    required this.engagement,
+    required this.notifications,
     this.auth,
     this.leaderboard,
     this.friends,
@@ -171,6 +204,8 @@ class _MergeLoopAppState extends State<MergeLoopApp> {
         adService: widget.adService,
         leaderboard: widget.leaderboard,
         friends: widget.friends,
+        engagement: widget.engagement,
+        notifications: widget.notifications,
       );
     }
     return MaterialApp(
