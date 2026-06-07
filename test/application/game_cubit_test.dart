@@ -38,7 +38,7 @@ void main() {
   test('a legal merge updates score, spends a move, and triggers one drop', () async {
     final c = make('2026-06-06');
     await c.init();
-    var board = (c.state as GamePlaying).board;
+    final board = (c.state as GamePlaying).board;
 
     final pair = _findMergePair(board);
     await c.merge(fromIndex: pair.$1, toIndex: pair.$2);
