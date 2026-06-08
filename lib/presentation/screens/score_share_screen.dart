@@ -19,6 +19,9 @@ class ScoreShareScreen extends StatelessWidget {
   final bool canOfferAd;
   final VoidCallback onWatchAd;
 
+  /// Returns to the main menu (tier select). When null, no button is shown.
+  final VoidCallback? onMainMenu;
+
   /// The player's friend code, when online. When present, the share text
   /// includes an invite link and an "Invite a friend" CTA is shown.
   final String? friendCode;
@@ -36,6 +39,7 @@ class ScoreShareScreen extends StatelessWidget {
     required this.stats,
     required this.canOfferAd,
     required this.onWatchAd,
+    this.onMainMenu,
     this.friendCode,
     this.newlyUnlocked = const {},
     this.shareText,
@@ -87,6 +91,14 @@ class ScoreShareScreen extends StatelessWidget {
                 onPressed: () => _share(context),
                 child: const Text('Share'),
               ),
+              if (onMainMenu != null) ...[
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  key: const Key('main-menu-button'),
+                  onPressed: onMainMenu,
+                  child: const Text('Main Menu'),
+                ),
+              ],
               if (friendCode != null) ...[
                 const SizedBox(height: 8),
                 OutlinedButton.icon(
