@@ -114,6 +114,7 @@ class _GameScreenState extends State<GameScreen> {
       newlyUnlocked: newly,
       canOfferAd: context.read<GameCubit>().canOfferAd,
       onWatchAd: () => _watchRewarded(context, context.read<GameCubit>()),
+      onMainMenu: () => Navigator.of(context).pop(),
     );
   }
 
