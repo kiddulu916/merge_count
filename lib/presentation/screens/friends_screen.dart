@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../application/rivalry_cubit.dart';
 import '../../domain/models/difficulty.dart';
 import '../../domain/models/friend.dart';
 import '../../infrastructure/friends_service.dart';
@@ -27,6 +28,10 @@ class FriendsScreen extends StatefulWidget {
   /// Seam: share the invite link. Defaults to the native share sheet.
   final Future<void> Function(String text)? shareInvite;
 
+  /// Phase 3 rivalries. When provided, each matched-friend row gets a "Set
+  /// rival" affordance and the current rival is highlighted. Null hides it.
+  final RivalryCubit? rivalry;
+
   const FriendsScreen({
     super.key,
     required this.service,
@@ -34,6 +39,7 @@ class FriendsScreen extends StatefulWidget {
     this.initialDifficulty = Difficulty.easy,
     this.loadContacts,
     this.shareInvite,
+    this.rivalry,
   });
 
   @override
@@ -242,14 +248,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
             icon: const Icon(Icons.contacts),
             label: const Text('Match contacts'),
           ),
-          for (final f in _matched)
-            ListTile(
-              key: Key('matched-${f.playerId}'),
-              dense: true,
-              title: Text(f.displayName,
-                  style: const TextStyle(color: Colors.white)),
-              trailing: const Icon(Icons.person_add, color: Colors.white54),
-            ),
+          for (final f in _matched) _matchedRow(f),
           const SizedBox(height: 24),
           _sectionTitle('Friends leaderboard'),
           const SizedBox(height: 8),
@@ -264,6 +263,50 @@ class _FriendsScreenState extends State<FriendsScreen> {
         ],
       ),
     );
+  }
+
+  /// A matched-friend row. With a [RivalryCubit] wired, it shows a "Set rival"
+  /// affordance and highlights the row when it IS the current rival.
+  Widget _matchedRow(Friend f) {
+    final rivalry = widget.rivalry;
+    final isRival = rivalry?.state.rivalId == f.playerId;
+    return ListTile(
+      key: Key('matched-${f.playerId}'),
+      dense: true,
+      title: Text(f.displayName,
+          style: const TextStyle(color: Colors.white)),
+      tileColor: isRival ? const Color(0xFF22283A) : null,
+      trailing: rivalry == null
+          ? const Icon(Icons.person_add, color: Colors.white54)
+          : IconButton(
+              key: Key('set-rival-${f.playerId}'),
+              tooltip: isRival ? 'Your rival' : 'Set as rival',
+              icon: Icon(
+                isRival ? Icons.flag : Icons.outlined_flag,
+                color: isRival ? Colors.cyanAccent : Colors.white54,
+              ),
+              onPressed: () => _toggleRival(f),
+            ),
+    );
+  }
+
+  Future<void> _toggleRival(Friend f) async {
+    final rivalry = widget.rivalry;
+    if (rivalry == null) return;
+    final isRival = rivalry.state.rivalId == f.playerId;
+    if (isRival) {
+      await rivalry.clearRival();
+    } else {
+      await rivalry.setRival(rivalId: f.playerId, rivalName: f.displayName);
+    }
+    if (mounted) {
+      setState(() {}); // reflect the new rival highlight
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(isRival
+            ? 'Removed ${f.displayName} as your rival.'
+            : '${f.displayName} is now your rival!'),
+      ));
+    }
   }
 
   Widget _sectionTitle(String text) => Text(

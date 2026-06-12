@@ -13,6 +13,12 @@ const int kStreakExpiryId = 1002;
 const int kLootReadyId = 1003;
 const int kMiddayId = 1004;
 
+/// Phase 3 rivalry. Fired (immediately, not scheduled) when a fetched rival
+/// score overtakes the player on a tier they haven't yet beaten today. Fires at
+/// most once per overtake — the gating lives in [RivalryCubit] against
+/// `lastSeenRivalScoreByTier`, so this id is reused (cancel + replace) per fire.
+const int kRivalPassedId = 1005;
+
 /// A single notification the service wants delivered at [when] (local time).
 class ScheduledNotification {
   final int id;
@@ -116,6 +122,28 @@ class NotificationService {
   /// Request OS permission contextually (call AFTER the first completion, never
   /// at cold launch). Returns whether permission is granted.
   Future<bool> requestPermission() => _requestPermission();
+
+  /// Fire the Phase 3 "your rival passed you" nudge (immediate, not a recurring
+  /// reminder). Delivered ~now via the same schedule seam — the rival's
+  /// [rivalName] and the tier [difficultyLabel] personalize the body. The
+  /// CALLER must gate this so it fires at most once per overtake (see
+  /// [RivalryCubit] / `lastSeenRivalScoreByTier`); this method is delivery only.
+  Future<void> showRivalPassed({
+    required tz.TZDateTime now,
+    required String rivalName,
+    required String difficultyLabel,
+    required int rivalScore,
+  }) async {
+    // Cancel any prior rival nudge so we never stack duplicates, then deliver a
+    // moment in the future (zonedSchedule requires a future instant).
+    await _cancel(kRivalPassedId);
+    await _schedule(ScheduledNotification(
+      id: kRivalPassedId,
+      title: '$rivalName just passed you',
+      body: 'They scored $rivalScore on $difficultyLabel. Reclaim the lead!',
+      when: now.add(const Duration(seconds: 1)),
+    ));
+  }
 
   /// Pure: decide which notifications should be live given the current state.
   ///

@@ -144,6 +144,21 @@ class PlayerProfile {
   /// was the highest reached in a run. Migration-free default empty.
   final Map<String, int> almanacCounts;
 
+  /// The chosen rival's stable player id (Phase 3), or null if no rival is set.
+  /// Migration-free default null.
+  final String? rivalId;
+
+  /// The chosen rival's display name (Phase 3), for the you-vs-them chip.
+  /// Migration-free default null.
+  final String? rivalName;
+
+  /// Last seen rival score per tier (`difficulty.name` -> score) (Phase 3). The
+  /// "your rival passed you" nudge fires only when the rival's fetched score
+  /// exceeds BOTH the player's score AND this last-seen value, so a single
+  /// overtake fires at most one notification (no spam). Migration-free default
+  /// empty.
+  final Map<String, int> lastSeenRivalScoreByTier;
+
   const PlayerProfile({
     this.dailyActiveStreak = 0,
     this.lastActiveDate,
@@ -158,6 +173,9 @@ class PlayerProfile {
     this.purchasedCosmetics = const {},
     this.lifetimeXp = 0,
     this.almanacCounts = const {},
+    this.rivalId,
+    this.rivalName,
+    this.lastSeenRivalScoreByTier = const {},
   });
 
   static const empty = PlayerProfile();
@@ -176,6 +194,10 @@ class PlayerProfile {
     Set<String>? purchasedCosmetics,
     int? lifetimeXp,
     Map<String, int>? almanacCounts,
+    String? rivalId,
+    bool clearRival = false,
+    String? rivalName,
+    Map<String, int>? lastSeenRivalScoreByTier,
   }) =>
       PlayerProfile(
         dailyActiveStreak: dailyActiveStreak ?? this.dailyActiveStreak,
@@ -192,6 +214,11 @@ class PlayerProfile {
         purchasedCosmetics: purchasedCosmetics ?? this.purchasedCosmetics,
         lifetimeXp: lifetimeXp ?? this.lifetimeXp,
         almanacCounts: almanacCounts ?? this.almanacCounts,
+        // [clearRival] wins so a rival can be explicitly removed (set to null).
+        rivalId: clearRival ? null : (rivalId ?? this.rivalId),
+        rivalName: clearRival ? null : (rivalName ?? this.rivalName),
+        lastSeenRivalScoreByTier:
+            lastSeenRivalScoreByTier ?? this.lastSeenRivalScoreByTier,
       );
 
   Map<String, dynamic> toJson() => {
@@ -208,6 +235,9 @@ class PlayerProfile {
         'purchasedCosmetics': purchasedCosmetics.toList(),
         'lifetimeXp': lifetimeXp,
         'almanacCounts': almanacCounts,
+        'rivalId': rivalId,
+        'rivalName': rivalName,
+        'lastSeenRivalScoreByTier': lastSeenRivalScoreByTier,
       };
 
   static PlayerProfile fromJson(Map<String, dynamic> j) => PlayerProfile(
@@ -235,6 +265,12 @@ class PlayerProfile {
         lifetimeXp: (j['lifetimeXp'] as int?) ?? 0,
         almanacCounts: ((j['almanacCounts'] as Map?) ?? const {})
             .map((k, v) => MapEntry(k as String, (v as num).toInt())),
+        // Absent in pre-Phase-3 profiles: migration-free defaults.
+        rivalId: j['rivalId'] as String?,
+        rivalName: j['rivalName'] as String?,
+        lastSeenRivalScoreByTier:
+            ((j['lastSeenRivalScoreByTier'] as Map?) ?? const {})
+                .map((k, v) => MapEntry(k as String, (v as num).toInt())),
       );
 }
 

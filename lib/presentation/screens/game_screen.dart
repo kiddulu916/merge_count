@@ -85,8 +85,13 @@ class _GameScreenState extends State<GameScreen> {
                     GameAdRewardGranted(:final board, :final difficulty) ||
                     GamePlaying(:final board, :final difficulty) =>
                       _buildPlaying(context, board, difficulty),
-                    GameOverShowScore(:final board, :final date, :final stats) =>
-                      _buildResult(context, board, date, stats),
+                    GameOverShowScore(
+                      :final board,
+                      :final date,
+                      :final stats,
+                      :final difficulty
+                    ) =>
+                      _buildResult(context, board, date, stats, difficulty),
                   };
                 },
               ),
@@ -99,7 +104,7 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Widget _buildResult(BuildContext context, BoardState board, String date,
-      LifetimeStats stats) {
+      LifetimeStats stats, Difficulty difficulty) {
     final engagement = widget.engagement;
     final newly = engagement?.state.newlyUnlocked ?? const {};
     // Surface freshly-unlocked badges once, then clear them.
@@ -122,6 +127,8 @@ class _GameScreenState extends State<GameScreen> {
       board: board,
       date: date,
       stats: stats,
+      difficulty: difficulty,
+      cosmetic: _cosmetic,
       friendCode: friendCode,
       newlyUnlocked: newly,
       nearMiss: NearMiss.message(board, bestScore: stats.bestScore),
