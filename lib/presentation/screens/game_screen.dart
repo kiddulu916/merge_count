@@ -4,8 +4,10 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../application/engagement_cubit.dart';
 import '../../application/game_cubit.dart';
 import '../../application/game_state.dart';
+import '../../domain/engine/near_miss.dart';
 import '../../domain/models/board_state.dart';
 import '../../domain/models/cosmetic.dart';
+import '../../domain/models/player_level.dart';
 import '../../infrastructure/storage_service.dart';
 import '../../domain/models/difficulty.dart';
 import '../../infrastructure/ad_service.dart';
@@ -17,9 +19,16 @@ import '../widgets/moves_counter.dart';
 import '../widgets/rewarded_dialog.dart';
 import '../widgets/streak_banner.dart';
 import 'score_share_screen.dart';
+import 'stats_calendar_screen.dart';
+import 'tutorial_overlay.dart';
 
 class GameScreen extends StatefulWidget {
   final AdService adService;
+
+  /// Storage, so the screen can gate the first-run tutorial (`tutorialSeen`),
+  /// read the `colorblindMode` setting, and load the day-result history for the
+  /// stats calendar (Phase 4). Required.
+  final StorageService storage;
 
   /// Phase 4 engagement state (streak banner, cosmetic, newly-unlocked badges).
   final EngagementCubit? engagement;
@@ -35,6 +44,7 @@ class GameScreen extends StatefulWidget {
   const GameScreen({
     super.key,
     required this.adService,
+    required this.storage,
     this.engagement,
     this.notifications,
     this.friendCode,
@@ -48,6 +58,14 @@ class _GameScreenState extends State<GameScreen> {
   /// Last revealed next-drop tier (null until a hint is used). Read-only display.
   int? _hintTier;
 
+  /// Whether the first-run tutorial overlay is currently showing. Set on init
+  /// from the persisted `tutorialSeen` flag; cleared (and persisted) on dismiss.
+  bool _showTutorial = false;
+
+  /// Cached colorblind-mode setting (Phase 4). Read once from the profile; drives
+  /// the per-tier pattern overlay on the board.
+  bool _colorblind = false;
+
   AdService get adService => widget.adService;
   String? get friendCode => widget.friendCode;
 
@@ -55,41 +73,83 @@ class _GameScreenState extends State<GameScreen> {
       widget.engagement?.state.selectedCosmetic ?? Cosmetic.classic;
 
   @override
+  void initState() {
+    super.initState();
+    final profile = widget.storage.loadProfile();
+    _showTutorial = !profile.tutorialSeen;
+    _colorblind = profile.colorblindMode;
+  }
+
+  /// Persist `tutorialSeen` BEFORE removing the overlay so it can never reappear
+  /// on relaunch (failure mode: shows every launch).
+  Future<void> _dismissTutorial() async {
+    final profile = widget.storage.loadProfile();
+    await widget.storage.saveProfile(profile.copyWith(tutorialSeen: true));
+    if (mounted) setState(() => _showTutorial = false);
+  }
+
+  void _openStatsCalendar(BuildContext context, Difficulty difficulty) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => StatsCalendarScreen(
+          history: widget.storage.loadHistory(),
+          initialDifficulty: difficulty,
+        ),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF12141C),
       body: SafeArea(
-        child: Column(
+        child: Stack(
           children: [
-            Expanded(
-              child: BlocConsumer<GameCubit, GameState>(
-                listener: (context, state) {
-                  if (state is GameOverShowScore) {
-                    final cubit = context.read<GameCubit>();
-                    if (cubit.canOfferAd) {
-                      _promptRewarded(context, cubit);
-                    }
-                  }
-                  if (state is GamePlaying) {
-                    // A new board state has dropped the previously-hinted tile;
-                    // clear the stale reveal.
-                    if (_hintTier != null) setState(() => _hintTier = null);
-                  }
-                },
-                builder: (context, state) {
-                  return switch (state) {
-                    GameInitial() =>
-                      const Center(child: CircularProgressIndicator()),
-                    GameAdRewardGranted(:final board, :final difficulty) ||
-                    GamePlaying(:final board, :final difficulty) =>
-                      _buildPlaying(context, board, difficulty),
-                    GameOverShowScore(:final board, :final date, :final stats) =>
-                      _buildResult(context, board, date, stats),
-                  };
-                },
-              ),
+            Column(
+              children: [
+                Expanded(
+                  child: BlocConsumer<GameCubit, GameState>(
+                    listener: (context, state) {
+                      if (state is GameOverShowScore) {
+                        final cubit = context.read<GameCubit>();
+                        if (cubit.canOfferAd) {
+                          _promptRewarded(context, cubit);
+                        }
+                      }
+                      if (state is GamePlaying) {
+                        // A new board state has dropped the previously-hinted
+                        // tile; clear the stale reveal.
+                        if (_hintTier != null) {
+                          setState(() => _hintTier = null);
+                        }
+                      }
+                    },
+                    builder: (context, state) {
+                      return switch (state) {
+                        GameInitial() =>
+                          const Center(child: CircularProgressIndicator()),
+                        GameAdRewardGranted(:final board, :final difficulty) ||
+                        GamePlaying(:final board, :final difficulty) =>
+                          _buildPlaying(context, board, difficulty),
+                        GameOverShowScore(
+                          :final board,
+                          :final date,
+                          :final stats,
+                          :final difficulty
+                        ) =>
+                          _buildResult(context, board, date, stats, difficulty),
+                      };
+                    },
+                  ),
+                ),
+                BannerSlot(adService: adService),
+              ],
             ),
-            BannerSlot(adService: adService),
+            if (_showTutorial)
+              Positioned.fill(
+                child: TutorialOverlay(onDismiss: _dismissTutorial),
+              ),
           ],
         ),
       ),
@@ -97,7 +157,7 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Widget _buildResult(BuildContext context, BoardState board, String date,
-      LifetimeStats stats) {
+      LifetimeStats stats, Difficulty difficulty) {
     final engagement = widget.engagement;
     final newly = engagement?.state.newlyUnlocked ?? const {};
     // Surface freshly-unlocked badges once, then clear them.
@@ -106,15 +166,55 @@ class _GameScreenState extends State<GameScreen> {
         engagement?.acknowledgeNewlyUnlocked();
       });
     }
+    final cubit = context.read<GameCubit>();
+
+    // Phase 2 meta-progression flair. XP/level reflect the post-completion
+    // engagement state (the completion hook fires before this screen builds).
+    final xpGained = xpForScore(board.score);
+    final level = engagement?.state.level ?? 0;
+    final lifetimeXp = engagement?.state.lifetimeXp ?? 0;
+    // Did THIS run's XP push the player up a level?
+    final leveledUp = level > levelForXp(lifetimeXp - xpGained);
+
     return ScoreShareScreen(
       board: board,
       date: date,
       stats: stats,
+      difficulty: difficulty,
+      cosmetic: _cosmetic,
       friendCode: friendCode,
       newlyUnlocked: newly,
-      canOfferAd: context.read<GameCubit>().canOfferAd,
-      onWatchAd: () => _watchRewarded(context, context.read<GameCubit>()),
+      nearMiss: NearMiss.message(board, bestScore: stats.bestScore),
+      xpGained: xpGained,
+      level: level,
+      leveledUp: leveledUp,
+      coinsEarned: cubit.coinsEarnedThisRun,
+      coinsDoubled: cubit.coinsDoubled,
+      onDoubleCoins: () => _watchDoubleCoins(context, cubit),
+      canOfferAd: cubit.canOfferAd,
+      onWatchAd: () => _watchRewarded(context, cubit),
       onMainMenu: () => Navigator.of(context).pop(),
+    );
+  }
+
+  /// Rewarded "double coins" on the result screen (Phase 2). On reward, credits
+  /// the run's earned coins again, then refreshes so the button hides.
+  void _watchDoubleCoins(BuildContext context, GameCubit cubit) {
+    adService.showRewarded(
+      onReward: () async {
+        final bonus = await cubit.doubleRunCoins();
+        if (bonus > 0) {
+          widget.engagement?.refreshWallet();
+          if (mounted) setState(() {}); // hide the button / reflect doubled
+        }
+      },
+      onUnavailable: () {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No ad available right now.')),
+          );
+        }
+      },
     );
   }
 
@@ -156,6 +256,20 @@ class _GameScreenState extends State<GameScreen> {
                 enabled: cubit.canUseHint,
                 onTap: () => _watchHint(context, cubit),
               ),
+              const SizedBox(width: 12),
+              OutlinedButton.icon(
+                key: const Key('undo-button'),
+                onPressed: cubit.canUndo ? () => _undo(context, cubit) : null,
+                icon: const Icon(Icons.undo, size: 18),
+                label: const Text('Undo'),
+              ),
+              const SizedBox(width: 12),
+              IconButton(
+                key: const Key('open-stats-calendar'),
+                tooltip: 'Stats calendar',
+                icon: const Icon(Icons.calendar_month, color: Colors.white70),
+                onPressed: () => _openStatsCalendar(context, difficulty),
+              ),
               if (_hintTier != null) ...[
                 const SizedBox(width: 12),
                 HintReveal(tier: _hintTier!),
@@ -170,6 +284,7 @@ class _GameScreenState extends State<GameScreen> {
                 child: BoardWidget(
                   board: board,
                   cosmetic: _cosmetic,
+                  colorblindMode: _colorblind,
                   onMerge: (from, to) =>
                       cubit.merge(fromIndex: from, toIndex: to),
                 ),
@@ -178,6 +293,27 @@ class _GameScreenState extends State<GameScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  /// Undo the last merge (Phase 4). Uses a free undo if one remains; otherwise
+  /// shows a rewarded ad and grants exactly one extra undo on reward. The undo
+  /// rewinds board + landing-PRNG + move-log together (replay-consistent).
+  void _undo(BuildContext context, GameCubit cubit) {
+    if (cubit.canUndoFree) {
+      cubit.undo();
+      return;
+    }
+    // Out of free undos: gate the extra undo behind a rewarded ad.
+    adService.showRewarded(
+      onReward: () => cubit.undoAfterReward(),
+      onUnavailable: () {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No ad available right now.')),
+          );
+        }
+      },
     );
   }
 

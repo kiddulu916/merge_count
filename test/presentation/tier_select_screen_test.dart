@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:merge_count/application/duel_cubit.dart';
 import 'package:merge_count/domain/constants.dart';
 import 'package:merge_count/domain/models/board_state.dart';
 import 'package:merge_count/domain/models/difficulty.dart';
+import 'package:merge_count/domain/models/duel_challenge.dart';
 import 'package:merge_count/domain/models/game_status.dart';
 import 'package:merge_count/domain/models/tile.dart';
 import 'package:merge_count/infrastructure/ad_service.dart';
@@ -122,6 +124,33 @@ void main() {
     await tester.pump(); // start the snackbar animation
     expect(find.text('Leaderboards need an internet connection.'),
         findsOneWidget);
+  });
+
+  testWidgets(
+      'given a DuelCubit with a today challenge, renders the duel banner',
+      (tester) async {
+    final storage = InMemoryStorageService();
+    final duels = DuelCubit(todayProvider: () => '2026-06-07')
+      ..receiveChallenge(const DuelChallenge(
+        date: '2026-06-07',
+        difficulty: Difficulty.hard,
+        challengerName: 'Ann',
+        challengerScore: 1000,
+      ));
+    addTearDown(duels.close);
+
+    await tester.pumpWidget(MaterialApp(
+      home: TierSelectScreen(
+        storage: storage,
+        adService: AdService(),
+        todayProvider: () => '2026-06-07',
+        duels: duels,
+        onTierSelected: (_, __) {},
+      ),
+    ));
+    await tester.pump();
+
+    expect(find.byKey(const Key('duel-banner')), findsOneWidget);
   });
 }
 

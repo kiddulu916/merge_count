@@ -2,17 +2,23 @@ import 'dart:async';
 
 import 'package:app_links/app_links.dart';
 
-/// Parses invite deep links and bridges them to a redeem callback.
+import '../domain/models/duel_challenge.dart';
+
+/// Parses invite + duel deep links and bridges them to redeem/challenge
+/// callbacks.
 ///
 /// Supported forms:
-///   mergecount://invite/<code>          (custom scheme)
-///   https://mergecount.app/invite/<code> (App Links / Universal Links fallback)
+///   mergecount://invite/<code>           (custom scheme)
+///   https://mergecount.app/invite/<code>  (App Links / Universal Links fallback)
+///   `mergecount://duel/<date>/<diff>/<score>/<name>`            (custom scheme)
+///   `https://mergecount.app/duel/<date>/<diff>/<score>/<name>`   (https fallback)
 ///
-/// The PURE part — [parseInviteCode] — is fully unit-tested. The app_links
-/// wiring (cold-start `getInitialLink` + warm `uriLinkStream`) is isolated here
-/// so it can be swapped/mocked. Per the spec failure-mode "lost on cold start":
-/// a code parsed before auth is ready is QUEUED ([pendingCode]) and replayed by
-/// the app once a session + display name exist.
+/// The PURE parts — [parseInviteCode] and [DuelChallenge.fromUri] — are fully
+/// unit-tested. The app_links wiring (cold-start `getInitialLink` + warm
+/// `uriLinkStream`) is isolated here so it can be swapped/mocked. Per the spec
+/// failure-mode "lost on cold start": an invite code or duel parsed before the
+/// app is ready is QUEUED ([pendingCode] / [pendingDuel]) and replayed by the
+/// app once it's ready.
 class DeepLinkService {
   final AppLinks _appLinks;
 
@@ -21,15 +27,27 @@ class DeepLinkService {
   /// queued in [pendingCode] for later replay.
   void Function(String code)? onInviteCode;
 
+  /// Called with a parsed duel challenge. May be invoked from cold start
+  /// (initial link) and from warm resume (stream). If null at parse time, the
+  /// challenge is queued in [pendingDuel] for later replay (mirrors invites).
+  void Function(DuelChallenge duel)? onDuel;
+
   /// A code captured before [onInviteCode] was wired (cold start before auth).
   /// The app consumes this via [takePendingCode] once it's ready to redeem.
   String? _pendingCode;
+
+  /// A duel captured before [onDuel] was wired (cold start). The app consumes
+  /// this via [takePendingDuel] once it's ready to present the challenge.
+  DuelChallenge? _pendingDuel;
   StreamSubscription<Uri>? _sub;
 
   DeepLinkService({AppLinks? appLinks}) : _appLinks = appLinks ?? AppLinks();
 
   /// The queued cold-start code, if any (without clearing it).
   String? get pendingCode => _pendingCode;
+
+  /// The queued cold-start duel, if any (without clearing it).
+  DuelChallenge? get pendingDuel => _pendingDuel;
 
   /// Pure parser: extract the invite code from a deep-link [uri], or null if it
   /// isn't an invite link. Accepts both the custom scheme and the https path.
@@ -58,6 +76,18 @@ class DeepLinkService {
     return parseInviteCode(uri);
   }
 
+  /// Pure parser: extract a [DuelChallenge] from a deep-link [uri], or null if it
+  /// isn't a (well-formed) duel link. Delegates to [DuelChallenge.fromUri] so the
+  /// encode/decode round-trip is owned by the model.
+  static DuelChallenge? parseDuel(Uri uri) => DuelChallenge.fromUri(uri);
+
+  /// Parse a raw link string as a duel; null when it's not a valid duel link.
+  static DuelChallenge? parseDuelString(String link) {
+    final uri = Uri.tryParse(link);
+    if (uri == null) return null;
+    return DuelChallenge.fromUri(uri);
+  }
+
   /// Start listening: handle the cold-start link then subscribe to warm links.
   /// Safe to call once after the app boots.
   Future<void> init() async {
@@ -71,6 +101,18 @@ class DeepLinkService {
   }
 
   void _handle(Uri uri) {
+    // Duel links take precedence on the duel host/path; invite links on theirs.
+    // They never overlap (distinct hosts/first segments) so order is harmless.
+    final duel = parseDuel(uri);
+    if (duel != null) {
+      final cb = onDuel;
+      if (cb != null) {
+        cb(duel);
+      } else {
+        _pendingDuel = duel; // queue for replay once the app is ready.
+      }
+      return;
+    }
     final code = parseInviteCode(uri);
     if (code == null) return;
     final cb = onInviteCode;
@@ -86,6 +128,13 @@ class DeepLinkService {
     final c = _pendingCode;
     _pendingCode = null;
     return c;
+  }
+
+  /// Consume and clear the queued cold-start duel (returns null if none).
+  DuelChallenge? takePendingDuel() {
+    final d = _pendingDuel;
+    _pendingDuel = null;
+    return d;
   }
 
   Future<void> dispose() async {

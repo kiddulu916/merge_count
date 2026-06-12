@@ -30,8 +30,84 @@ const int kMaxHintsPerDay = 3;
 /// kMaxStreakFreezeTokens in storage.
 const int kMaxFreezeGrantsPerDay = 1;
 
+/// Phase 4 — undo. Free undos a player gets per tier-day before a rewarded ad is
+/// required for further undos. The undo only rewinds local board/PRNG/move-log
+/// state to keep the run replay-consistent; it never alters the seed-fixed drop
+/// schedule, so this cap is purely a frustration-relief / ad-frequency lever.
+const int kFreeUndosPerDay = 1;
+
+/// Phase 4 — depth of the bounded undo history stack. Caps memory and prevents
+/// undo-to-start abuse (a player can never rewind more than this many merges).
+const int kUndoStackDepth = 3;
+
+/// Phase 4 — stats calendar history retention. The append-only day-result log is
+/// capped to this many most-recent entries (oldest dropped) so storage stays
+/// bounded (~one year of daily results across tiers).
+const int kHistoryRetentionDays = 366;
+
 /// Maximum number of drops that can ever occur in one day.
 const int kMaxDrops = kMovesPerDay + kAdMoveReward * kMaxAdContinuesPerDay; // 39
+
+/// Phase 1 (engagement engine) — golden tiles. A deterministic, seed-derived
+/// subset (~[kGoldenDropPercent]% on average) of the day's drops are "golden".
+/// Merging a golden tile credits [kGoldenMergeBonus] coins to the client-side
+/// wallet. Golden is a purely visual/economy property: it NEVER touches
+/// `BoardState.score` or `moveLog`, so replay verification stays untouched.
+const int kGoldenDropPercent = 8;
+const int kGoldenMergeBonus = 5;
+
+/// Phase 1 — Daily Loot Chest reward bands (coins). The day's reward is derived
+/// from the daily seed (`"$date:loot"`), so it is identical for every player,
+/// cheat-proof, and free. Bands: mostly small, occasional jackpot — the
+/// variable-reward dopamine core. Exposed here for playtest tuning.
+const int kLootCommonBase = 10;
+const int kLootCommonSpan = 15;
+const int kLootUncommonBase = 30;
+const int kLootUncommonSpan = 30;
+const int kLootJackpotBase = 100;
+const int kLootJackpotSpan = 50;
+
+/// Roll thresholds (0..99) for the loot bands: roll < common => common band,
+/// < uncommon => uncommon band, else jackpot. A rare cosmetic shard drops at
+/// or above [kLootShardThreshold].
+const int kLootCommonRollMax = 70;
+const int kLootUncommonRollMax = 95;
+const int kLootShardThreshold = 97;
+
+/// Phase 1 — near-miss framing. The largest score gap below a personal best
+/// that still reads as "so close" (only surfaced when no tile-pair near-miss
+/// applies). Kept small so the line stays honest.
+const int kNearMissScoreWindow = 50;
+
+/// Phase 1 — midday "your boards are waiting" nudge, minutes past local
+/// midnight (12:00 by default). Reuses the [reminderMinutes]-style slot.
+const int kMiddayReminderMinutes = 12 * 60;
+
+/// Phase 2 (meta-progression) — player level / XP. XP is purely a client-side
+/// flair derived from already-recorded cumulative score: `lifetimeXp` accrues
+/// `score ~/ kXpPerScore` each completed run. It NEVER affects `BoardState.score`
+/// or replay verification, and the level curve is monotonic non-decreasing.
+const int kXpPerScore = 10;
+
+/// Base divisor for the level curve: `level = floor(sqrt(xp / kXpPerLevelBase))`.
+/// Larger => slower leveling. Open tuning item.
+const int kXpPerLevelBase = 50;
+
+/// Phase 2 — Merge Almanac. A run records its `highestTier` into the per-tier
+/// almanac count (`tier -> times reached`). A tier's mastery badge unlocks once
+/// that tier has been reached [kAlmanacMasteryThreshold] times. Pure collection
+/// flair; never touches score.
+const int kAlmanacMasteryThreshold = 5;
+
+/// Phase 2 — earned cosmetics economy. Coin prices for purchasable tile themes.
+/// Open tuning items (watch coin sink/earn ratio for runaway inflation).
+const int kCosmeticPriceCommon = 150;
+const int kCosmeticPriceRare = 400;
+
+/// Phase 2 — flat soft-currency reward for completing a tier's day. Credited via
+/// the same [onCoinsEarned] wallet hook as golden tiles, so it NEVER touches
+/// `BoardState.score`. A rewarded ad can double the run's earned coins.
+const int kCompletionCoinReward = 20;
 
 /// Upper bound (inclusive) of the drop tier band for drop number [n].
 /// Drops are drawn from tiers [1 .. dropCap(n)]. The band widens by drop

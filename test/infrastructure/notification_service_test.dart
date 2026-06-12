@@ -86,6 +86,78 @@ void main() {
       );
       expect(plan.any((n) => n.id == kStreakExpiryId), isFalse);
     });
+
+    group('Phase 1 staggered nudges', () {
+      test(
+          'not done + loot claimed -> midday nudge fires (and loot-ready does '
+          'NOT, only one at the slot)', () {
+        final plan = NotificationService.planFor(
+          now: now(),
+          reminderMinutes: 19 * 60,
+          enabled: true,
+          allTiersDoneToday: false,
+          streakAtRisk: false,
+          lootUnclaimed: false,
+          middayMinutes: 12 * 60,
+        );
+        final midday = plan.firstWhere((n) => n.id == kMiddayId);
+        expect(midday.when.hour, 12);
+        // Exactly one notification occupies the midday slot.
+        expect(plan.any((n) => n.id == kLootReadyId), isFalse);
+      });
+
+      test(
+          'loot unclaimed -> ONLY the loot-ready nudge fires at the slot, the '
+          'midday nudge is suppressed (no duplicate at the same instant)', () {
+        final plan = NotificationService.planFor(
+          now: now(),
+          reminderMinutes: 19 * 60,
+          enabled: true,
+          allTiersDoneToday: false,
+          streakAtRisk: false,
+          lootUnclaimed: true,
+          middayMinutes: 12 * 60,
+        );
+        expect(plan.any((n) => n.id == kLootReadyId), isTrue);
+        expect(plan.any((n) => n.id == kMiddayId), isFalse);
+      });
+
+      test('all tiers done -> midday nudge suppressed', () {
+        final plan = NotificationService.planFor(
+          now: now(),
+          reminderMinutes: 19 * 60,
+          enabled: true,
+          allTiersDoneToday: true,
+          streakAtRisk: false,
+          lootUnclaimed: true, // loot can still fire; midday cannot
+        );
+        expect(plan.any((n) => n.id == kMiddayId), isFalse);
+      });
+
+      test('loot unclaimed -> chest-ready nudge scheduled', () {
+        final plan = NotificationService.planFor(
+          now: now(),
+          reminderMinutes: 19 * 60,
+          enabled: true,
+          allTiersDoneToday: false,
+          streakAtRisk: false,
+          lootUnclaimed: true,
+        );
+        expect(plan.any((n) => n.id == kLootReadyId), isTrue);
+      });
+
+      test('loot claimed -> chest-ready nudge suppressed', () {
+        final plan = NotificationService.planFor(
+          now: now(),
+          reminderMinutes: 19 * 60,
+          enabled: true,
+          allTiersDoneToday: false,
+          streakAtRisk: false,
+          lootUnclaimed: false,
+        );
+        expect(plan.any((n) => n.id == kLootReadyId), isFalse);
+      });
+    });
   });
 
   group('reschedule (cancel + schedule via seams)', () {
@@ -134,7 +206,7 @@ void main() {
     });
   });
 
-  test('cancelAll cancels both managed ids', () async {
+  test('cancelAll cancels all managed ids', () async {
     final cancelled = <int>[];
     final svc = NotificationService.withSeams(
       schedule: (_) async {},
@@ -142,7 +214,8 @@ void main() {
       requestPermission: () async => true,
     );
     await svc.cancelAll();
-    expect(cancelled, containsAll([kDailyReminderId, kStreakExpiryId]));
+    expect(cancelled,
+        containsAll([kDailyReminderId, kStreakExpiryId, kMiddayId, kLootReadyId]));
   });
 
   test('requestPermission delegates to the seam', () async {

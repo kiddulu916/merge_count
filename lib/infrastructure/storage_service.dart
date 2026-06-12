@@ -1,4 +1,6 @@
+import '../domain/constants.dart';
 import '../domain/models/board_state.dart';
+import '../domain/models/day_result.dart';
 import '../domain/models/difficulty.dart';
 
 /// A persisted in-progress (or finished) day for a single difficulty tier.
@@ -120,6 +122,54 @@ class PlayerProfile {
   /// populated lazily after a leaderboard fetch (powers rank-based achievements).
   final Map<String, int> bestRankByDifficulty;
 
+  /// Soft-currency wallet balance (Phase 1). A purely client-side economy:
+  /// coins NEVER affect `BoardState.score` or the move log. Migration-free
+  /// default 0.
+  final int coins;
+
+  /// UTC date (`YYYY-MM-DD`) of the last Daily Loot Chest claim, or null if the
+  /// chest has never been claimed. Guards once-per-UTC-day claiming.
+  /// Migration-free default null.
+  final String? lastLootClaimDate;
+
+  /// Cosmetic enum `name`s bought with coins (Phase 2). A purely client-side
+  /// purchase ledger — buying debits [coins] and records the name here.
+  /// Migration-free default empty.
+  final Set<String> purchasedCosmetics;
+
+  /// Cumulative client-side XP (Phase 2), derived from already-recorded run
+  /// scores. Drives the player level (pure flair); NEVER affects score or
+  /// replay. Migration-free default 0.
+  final int lifetimeXp;
+
+  /// Merge Almanac counts (Phase 2): tier (as a string key) -> times that tier
+  /// was the highest reached in a run. Migration-free default empty.
+  final Map<String, int> almanacCounts;
+
+  /// The chosen rival's stable player id (Phase 3), or null if no rival is set.
+  /// Migration-free default null.
+  final String? rivalId;
+
+  /// The chosen rival's display name (Phase 3), for the you-vs-them chip.
+  /// Migration-free default null.
+  final String? rivalName;
+
+  /// Last seen rival score per tier (`difficulty.name` -> score) (Phase 3). The
+  /// "your rival passed you" nudge fires only when the rival's fetched score
+  /// exceeds BOTH the player's score AND this last-seen value, so a single
+  /// overtake fires at most one notification (no spam). Migration-free default
+  /// empty.
+  final Map<String, int> lastSeenRivalScoreByTier;
+
+  /// Whether the first-run tutorial overlay has been shown+dismissed (Phase 4).
+  /// Gates the one-time coachmarks. Migration-free default false.
+  final bool tutorialSeen;
+
+  /// Whether colorblind-safe tile patterns are enabled (Phase 4). Numerals are
+  /// always rendered; this opt-in adds a per-tier pattern overlay so tiles are
+  /// distinguishable without hue. Migration-free default false.
+  final bool colorblindMode;
+
   const PlayerProfile({
     this.dailyActiveStreak = 0,
     this.lastActiveDate,
@@ -129,6 +179,16 @@ class PlayerProfile {
     this.notificationsEnabled = false,
     this.reminderMinutes = 19 * 60,
     this.bestRankByDifficulty = const {},
+    this.coins = 0,
+    this.lastLootClaimDate,
+    this.purchasedCosmetics = const {},
+    this.lifetimeXp = 0,
+    this.almanacCounts = const {},
+    this.rivalId,
+    this.rivalName,
+    this.lastSeenRivalScoreByTier = const {},
+    this.tutorialSeen = false,
+    this.colorblindMode = false,
   });
 
   static const empty = PlayerProfile();
@@ -142,6 +202,17 @@ class PlayerProfile {
     bool? notificationsEnabled,
     int? reminderMinutes,
     Map<String, int>? bestRankByDifficulty,
+    int? coins,
+    String? lastLootClaimDate,
+    Set<String>? purchasedCosmetics,
+    int? lifetimeXp,
+    Map<String, int>? almanacCounts,
+    String? rivalId,
+    bool clearRival = false,
+    String? rivalName,
+    Map<String, int>? lastSeenRivalScoreByTier,
+    bool? tutorialSeen,
+    bool? colorblindMode,
   }) =>
       PlayerProfile(
         dailyActiveStreak: dailyActiveStreak ?? this.dailyActiveStreak,
@@ -153,6 +224,18 @@ class PlayerProfile {
         reminderMinutes: reminderMinutes ?? this.reminderMinutes,
         bestRankByDifficulty:
             bestRankByDifficulty ?? this.bestRankByDifficulty,
+        coins: coins ?? this.coins,
+        lastLootClaimDate: lastLootClaimDate ?? this.lastLootClaimDate,
+        purchasedCosmetics: purchasedCosmetics ?? this.purchasedCosmetics,
+        lifetimeXp: lifetimeXp ?? this.lifetimeXp,
+        almanacCounts: almanacCounts ?? this.almanacCounts,
+        // [clearRival] wins so a rival can be explicitly removed (set to null).
+        rivalId: clearRival ? null : (rivalId ?? this.rivalId),
+        rivalName: clearRival ? null : (rivalName ?? this.rivalName),
+        lastSeenRivalScoreByTier:
+            lastSeenRivalScoreByTier ?? this.lastSeenRivalScoreByTier,
+        tutorialSeen: tutorialSeen ?? this.tutorialSeen,
+        colorblindMode: colorblindMode ?? this.colorblindMode,
       );
 
   Map<String, dynamic> toJson() => {
@@ -164,6 +247,16 @@ class PlayerProfile {
         'notificationsEnabled': notificationsEnabled,
         'reminderMinutes': reminderMinutes,
         'bestRankByDifficulty': bestRankByDifficulty,
+        'coins': coins,
+        'lastLootClaimDate': lastLootClaimDate,
+        'purchasedCosmetics': purchasedCosmetics.toList(),
+        'lifetimeXp': lifetimeXp,
+        'almanacCounts': almanacCounts,
+        'rivalId': rivalId,
+        'rivalName': rivalName,
+        'lastSeenRivalScoreByTier': lastSeenRivalScoreByTier,
+        'tutorialSeen': tutorialSeen,
+        'colorblindMode': colorblindMode,
       };
 
   static PlayerProfile fromJson(Map<String, dynamic> j) => PlayerProfile(
@@ -181,6 +274,25 @@ class PlayerProfile {
         reminderMinutes: (j['reminderMinutes'] as int?) ?? 19 * 60,
         bestRankByDifficulty: ((j['bestRankByDifficulty'] as Map?) ?? const {})
             .map((k, v) => MapEntry(k as String, (v as num).toInt())),
+        // Absent in pre-Phase-1 profiles: migration-free defaults.
+        coins: (j['coins'] as int?) ?? 0,
+        lastLootClaimDate: j['lastLootClaimDate'] as String?,
+        // Absent in pre-Phase-2 profiles: migration-free defaults.
+        purchasedCosmetics: ((j['purchasedCosmetics'] as List?) ?? const [])
+            .map((e) => e as String)
+            .toSet(),
+        lifetimeXp: (j['lifetimeXp'] as int?) ?? 0,
+        almanacCounts: ((j['almanacCounts'] as Map?) ?? const {})
+            .map((k, v) => MapEntry(k as String, (v as num).toInt())),
+        // Absent in pre-Phase-3 profiles: migration-free defaults.
+        rivalId: j['rivalId'] as String?,
+        rivalName: j['rivalName'] as String?,
+        lastSeenRivalScoreByTier:
+            ((j['lastSeenRivalScoreByTier'] as Map?) ?? const {})
+                .map((k, v) => MapEntry(k as String, (v as num).toInt())),
+        // Absent in pre-Phase-4 profiles: migration-free defaults.
+        tutorialSeen: (j['tutorialSeen'] as bool?) ?? false,
+        colorblindMode: (j['colorblindMode'] as bool?) ?? false,
       );
 }
 
@@ -201,12 +313,28 @@ abstract class StorageService {
   /// Cross-tier profile (headline streak, achievements, cosmetics, notif prefs).
   PlayerProfile loadProfile();
   Future<void> saveProfile(PlayerProfile profile);
+
+  /// The SINGLE awaited path for a pure coin credit/refund: loads the profile,
+  /// writes `coins = max(0, coins + delta)` (clamped at 0), awaits the save, and
+  /// returns the new balance. [delta] is signed (positive credit, negative
+  /// refund). Atomic compound writes (loot claim, cosmetic purchase) stay
+  /// combined elsewhere — this is only for standalone coin movement.
+  Future<int> addCoins(int delta);
+
+  /// Append-only day-result history (Phase 4), powering the stats calendar.
+  /// [loadHistory] returns the persisted results in insertion (chronological)
+  /// order, oldest first; an empty list when nothing has been recorded (so it
+  /// loads cleanly for pre-Phase-4 players). [appendResult] adds one result and
+  /// caps the log to [kHistoryRetentionDays] entries, dropping the oldest.
+  List<DayResult> loadHistory();
+  Future<void> appendResult(DayResult result);
 }
 
 class InMemoryStorageService implements StorageService {
   final Map<String, GameSnapshot> _snapshots = {};
   final Map<String, LifetimeStats> _stats = {};
   PlayerProfile _profile = PlayerProfile.empty;
+  final List<DayResult> _history = [];
 
   static String _snapKey(String date, Difficulty difficulty) =>
       '$date:${difficulty.name}';
@@ -238,5 +366,24 @@ class InMemoryStorageService implements StorageService {
   @override
   Future<void> saveProfile(PlayerProfile profile) async {
     _profile = profile;
+  }
+
+  @override
+  Future<int> addCoins(int delta) async {
+    final next = (_profile.coins + delta) < 0 ? 0 : _profile.coins + delta;
+    _profile = _profile.copyWith(coins: next);
+    return next;
+  }
+
+  @override
+  List<DayResult> loadHistory() => List<DayResult>.unmodifiable(_history);
+
+  @override
+  Future<void> appendResult(DayResult result) async {
+    _history.add(result);
+    // Cap to the retention window, dropping the oldest entries.
+    while (_history.length > kHistoryRetentionDays) {
+      _history.removeAt(0);
+    }
   }
 }

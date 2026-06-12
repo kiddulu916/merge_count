@@ -4,7 +4,11 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
+import 'application/duel_cubit.dart';
 import 'application/engagement_cubit.dart';
+import 'application/game_cubit.dart' show utcToday;
+import 'application/rivalry_cubit.dart';
+import 'domain/models/duel_challenge.dart';
 import 'domain/models/friend.dart';
 import 'infrastructure/ad_service.dart';
 import 'infrastructure/auth_service.dart';
@@ -49,6 +53,12 @@ Future<void> main() async {
 
   final engagement = EngagementCubit(storage: storage)..load();
 
+  // Phase 3 social layer. Both are profile-backed + offline-safe: the rival
+  // relationship persists locally and duels carry their payload in the link, so
+  // neither needs a backend ($0). Hydrate the rival from storage now.
+  final rivalry = RivalryCubit(storage: storage)..load();
+  final duels = DuelCubit(todayProvider: utcToday);
+
   // Online layer (Phase 2). Degrades gracefully: if Supabase isn't configured
   // (no --dart-define) or anon sign-in fails, the game still runs offline.
   AuthService? auth;
@@ -70,14 +80,13 @@ Future<void> main() async {
     }
   }
 
-  // Deep links (mergecount://invite/<code>). Captures cold-start links so a
-  // redeem isn't lost before the app is ready; the app replays the pending code
-  // once a signed-in session + display name exist (Phase 3 failure-mode).
-  DeepLinkService? deepLinks;
-  if (friends != null) {
-    deepLinks = DeepLinkService();
-    await deepLinks.init();
-  }
+  // Deep links: invites (mergecount://invite/<code>) AND duels
+  // (mergecount://duel/...). Duels need no backend (the challenge rides in the
+  // link), so the service is started whenever EITHER is usable — i.e. always.
+  // Captures cold-start links so a redeem/challenge isn't lost before the app is
+  // ready; the app replays the pending code/duel once it's ready.
+  final deepLinks = DeepLinkService();
+  await deepLinks.init();
 
   runApp(MergeCountApp(
     storage: storage,
@@ -87,6 +96,8 @@ Future<void> main() async {
     friends: friends,
     deepLinks: deepLinks,
     engagement: engagement,
+    rivalry: rivalry,
+    duels: duels,
     notifications: notifications,
     needsDisplayName: needsDisplayName,
   ));
@@ -100,6 +111,8 @@ class MergeCountApp extends StatefulWidget {
   final FriendsService? friends;
   final DeepLinkService? deepLinks;
   final EngagementCubit engagement;
+  final RivalryCubit? rivalry;
+  final DuelCubit? duels;
   final NotificationService notifications;
   final bool needsDisplayName;
 
@@ -113,6 +126,8 @@ class MergeCountApp extends StatefulWidget {
     this.leaderboard,
     this.friends,
     this.deepLinks,
+    this.rivalry,
+    this.duels,
     this.needsDisplayName = false,
   });
 
@@ -132,19 +147,52 @@ class _MergeCountAppState extends State<MergeCountApp> {
     _wireDeepLinks();
   }
 
-  /// Route invite codes (cold-start queued or warm) to the redeem flow once the
-  /// app is ready (signed in + named).
+  /// Route invite codes + duels (cold-start queued or warm) to their handlers
+  /// once the app is ready. Invites need the friends backend; duels do not (the
+  /// challenge rides in the link), so duels are wired whenever a [DuelCubit] is
+  /// present.
   void _wireDeepLinks() {
     final dl = widget.deepLinks;
+    if (dl == null) return;
+
+    // --- Invites (require the friends backend). ---
     final friends = widget.friends;
-    if (dl == null || friends == null) return;
-    dl.onInviteCode = _redeemInvite;
-    // Replay a cold-start code captured before this handler was wired.
-    final pending = dl.takePendingCode();
-    if (pending != null) {
-      WidgetsBinding.instance
-          .addPostFrameCallback((_) => _redeemInvite(pending));
+    if (friends != null) {
+      dl.onInviteCode = _redeemInvite;
+      // Replay a cold-start code captured before this handler was wired.
+      final pending = dl.takePendingCode();
+      if (pending != null) {
+        WidgetsBinding.instance
+            .addPostFrameCallback((_) => _redeemInvite(pending));
+      }
     }
+
+    // --- Duels (no backend needed). ---
+    final duels = widget.duels;
+    if (duels != null) {
+      dl.onDuel = _receiveDuel;
+      // Replay a cold-start duel captured before this handler was wired.
+      final pendingDuel = dl.takePendingDuel();
+      if (pendingDuel != null) {
+        WidgetsBinding.instance
+            .addPostFrameCallback((_) => _receiveDuel(pendingDuel));
+      }
+    }
+  }
+
+  /// Accept an incoming duel challenge: hand it to the [DuelCubit] and surface a
+  /// prompt. The challenger's score is DISPLAY-ONLY — it never touches any
+  /// leaderboard row (ranking stays with the verified leaderboard).
+  void _receiveDuel(DuelChallenge duel) {
+    final duels = widget.duels;
+    if (duels == null) return;
+    duels.receiveChallenge(duel);
+    final message = duels.state.expired
+        ? 'That duel board has expired — try today\'s '
+            '${duel.difficulty.label} board.'
+        : '${duel.challengerName} challenged you on '
+            '${duel.difficulty.label}! Play the same board to settle it.';
+    _messengerKey.currentState?.showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _redeemInvite(String code) async {
@@ -205,6 +253,8 @@ class _MergeCountAppState extends State<MergeCountApp> {
         leaderboard: widget.leaderboard,
         friends: widget.friends,
         engagement: widget.engagement,
+        rivalry: widget.rivalry,
+        duels: widget.duels,
         notifications: widget.notifications,
       );
     }

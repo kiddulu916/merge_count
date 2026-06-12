@@ -39,20 +39,52 @@ class GameEngine {
   /// Drop a tile of [tier] into a deterministically-chosen empty cell. The
   /// landing index is drawn from [landing] (stream B) mapped onto current
   /// empties, so the item is global but the position adapts to this board.
-  static BoardState applyDrop(BoardState s, int tier, Prng landing) {
+  ///
+  /// When [golden] is true the dropped tile is marked golden (Phase 1): a
+  /// purely visual/economy flag that credits bonus coins on merge and NEVER
+  /// affects `score` or the move log. The landing draw is taken regardless of
+  /// [golden] so the stream stays in lock-step for every player.
+  static BoardState applyDrop(BoardState s, int tier, Prng landing,
+      {bool golden = false}) {
     final empties = s.emptyIndices;
     if (empties.isEmpty) {
-      // Invariant means this should never happen, but stay total.
+      // The occupancy invariant (a merge always frees a cell before its drop)
+      // guarantees this branch is unreachable. We assert loudly in debug because
+      // taking it WITHOUT a landing draw would silently break the
+      // `dropIndex == landing-draws` coupling that undo's `_rebuildLandingTo` and
+      // init-on-resume both depend on (a latent PRNG desync vs the server replay).
+      // We deliberately do NOT take a landing draw here (changing draw counts
+      // would itself diverge from the server replay); we just stay total in
+      // release by advancing dropIndex so the run can still finish.
+      assert(
+          empties.isNotEmpty,
+          'occupancy invariant: a drop always has a landing cell; if this ever '
+          'fires, the dropIndex==landing-draws coupling that undo/resume depend '
+          'on is broken');
       return s.copyWith(dropIndex: s.dropIndex + 1);
     }
     final idx = empties[landing.nextInt(empties.length)];
     final cells = List<Tile?>.of(s.cells);
-    cells[idx] = Tile(id: s.nextTileId, tier: tier);
+    cells[idx] = Tile(id: s.nextTileId, tier: tier, golden: golden);
     return s.copyWith(
       cells: cells,
       nextTileId: s.nextTileId + 1,
       dropIndex: s.dropIndex + 1,
     );
+  }
+
+  /// Coins to credit when the merge of [fromIndex] into [toIndex] consumes one
+  /// or more golden tiles. Pure and read-only — it inspects [before] (the board
+  /// PRIOR to the merge) and returns a bonus; it NEVER mutates state or touches
+  /// `score`. The cubit applies this to the client-side wallet, keeping the
+  /// engine side-effect-free and replay fairness intact.
+  static int goldenBonusFor(BoardState before, int fromIndex, int toIndex) {
+    var golden = 0;
+    final from = before.cells[fromIndex];
+    final to = before.cells[toIndex];
+    if (from != null && from.golden) golden++;
+    if (to != null && to.golden) golden++;
+    return golden * kGoldenMergeBonus;
   }
 
   /// True if any two live tiles share a tier below the cap (a legal merge).

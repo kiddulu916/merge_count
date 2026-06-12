@@ -99,4 +99,85 @@ void main() {
         bestTier: 4);
     expect(LifetimeStats.fromJson(stats.toJson()).toJson(), stats.toJson());
   });
+
+  group('PlayerProfile wallet fields (Phase 1)', () {
+    test('default to 0 / null (migration-free)', () {
+      const p = PlayerProfile();
+      expect(p.coins, 0);
+      expect(p.lastLootClaimDate, isNull);
+    });
+
+    test('a pre-Phase-1 profile json (no wallet keys) decodes to defaults', () {
+      final p = PlayerProfile.fromJson({
+        'dailyActiveStreak': 5,
+        'lastActiveDate': '2026-06-07',
+        'unlockedAchievements': <String>[],
+        'selectedCosmetic': 'classic',
+        'adUnlockedCosmetics': <String>[],
+        'notificationsEnabled': false,
+        'reminderMinutes': 19 * 60,
+        'bestRankByDifficulty': <String, int>{},
+        // No 'coins' / 'lastLootClaimDate' keys.
+      });
+      expect(p.coins, 0);
+      expect(p.lastLootClaimDate, isNull);
+      // Existing fields are untouched.
+      expect(p.dailyActiveStreak, 5);
+    });
+
+    test('round-trips coins + lastLootClaimDate through json', () {
+      const p = PlayerProfile(coins: 175, lastLootClaimDate: '2026-06-11');
+      final decoded = PlayerProfile.fromJson(p.toJson());
+      expect(decoded.coins, 175);
+      expect(decoded.lastLootClaimDate, '2026-06-11');
+    });
+
+    test('copyWith updates the wallet fields', () {
+      final p = const PlayerProfile()
+          .copyWith(coins: 30, lastLootClaimDate: '2026-06-11');
+      expect(p.coins, 30);
+      expect(p.lastLootClaimDate, '2026-06-11');
+    });
+
+    test('Phase 3 rival fields default to null / empty (migration-free)', () {
+      const p = PlayerProfile();
+      expect(p.rivalId, isNull);
+      expect(p.rivalName, isNull);
+      expect(p.lastSeenRivalScoreByTier, isEmpty);
+    });
+
+    test('a pre-Phase-3 profile json (no rival keys) decodes to defaults', () {
+      final p = PlayerProfile.fromJson({
+        'dailyActiveStreak': 5,
+        'lastActiveDate': '2026-06-07',
+        'coins': 42,
+        // No 'rivalId' / 'rivalName' / 'lastSeenRivalScoreByTier' keys.
+      });
+      expect(p.rivalId, isNull);
+      expect(p.rivalName, isNull);
+      expect(p.lastSeenRivalScoreByTier, isEmpty);
+      // Existing fields are untouched.
+      expect(p.dailyActiveStreak, 5);
+      expect(p.coins, 42);
+    });
+
+    test('round-trips the rival fields through json', () {
+      const p = PlayerProfile(
+        rivalId: 'p1',
+        rivalName: 'Ann',
+        lastSeenRivalScoreByTier: {'hard': 4096, 'easy': 100},
+      );
+      final decoded = PlayerProfile.fromJson(p.toJson());
+      expect(decoded.rivalId, 'p1');
+      expect(decoded.rivalName, 'Ann');
+      expect(decoded.lastSeenRivalScoreByTier, {'hard': 4096, 'easy': 100});
+    });
+
+    test('copyWith clearRival removes the rival', () {
+      const p = PlayerProfile(rivalId: 'p1', rivalName: 'Ann');
+      final cleared = p.copyWith(clearRival: true);
+      expect(cleared.rivalId, isNull);
+      expect(cleared.rivalName, isNull);
+    });
+  });
 }

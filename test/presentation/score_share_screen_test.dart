@@ -75,6 +75,10 @@ void main() {
     ));
 
     expect(find.byKey(const Key('main-menu-button')), findsOneWidget);
+    // The richer share card makes the result content scrollable; bring the
+    // button into view before tapping it.
+    await tester.ensureVisible(find.byKey(const Key('main-menu-button')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('main-menu-button')));
     await tester.pump();
     expect(tapped, 1);
@@ -135,5 +139,33 @@ void main() {
 
     expect(sharer.fbCalls, 1);
     expect(sharer.sheetCalls, 1);
+  });
+
+  testWidgets('falls back to a TEXT share when the card render fails',
+      (tester) async {
+    final sharer = _FakeSharer(true);
+    String? shared;
+    await tester.pumpWidget(MaterialApp(
+      home: ScoreShareScreen(
+        board: _board(),
+        date: '2026-06-06',
+        stats: _stats,
+        canOfferAd: false,
+        onWatchAd: () {},
+        sharer: sharer,
+        // Render fails -> null bytes.
+        captureOverride: () async => null,
+        shareText: (t) async => shared = t,
+      ),
+    ));
+
+    await tester.tap(find.byKey(const Key('share-card-button')));
+    await tester.pumpAndSettle();
+
+    // No image share attempted; text fallback carried the result.
+    expect(sharer.fbCalls, 0);
+    expect(sharer.sheetCalls, 0);
+    expect(shared, isNotNull);
+    expect(shared, contains('1234'));
   });
 }
