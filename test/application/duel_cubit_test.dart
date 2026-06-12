@@ -78,6 +78,19 @@ void main() {
       expect(c.state.hasChallenge, isFalse);
     });
 
+    test('an expired challenge never settles (no outcome) even on its board',
+        () {
+      // "Today" is past the challenge date, so the board is gone (expired).
+      final c = DuelCubit(todayProvider: () => '2026-06-12')
+        ..receiveChallenge(challenge); // challenge.date == 2026-06-11
+      expect(c.state.expired, isTrue);
+      // Recording a result for the challenged (date,diff) board must NOT settle.
+      c.recordMyResult(
+          date: '2026-06-11', difficulty: Difficulty.hard, myScore: 9999);
+      expect(c.state.outcome, isNull);
+      expect(c.state.myScore, isNull);
+    });
+
     test('dismiss clears the challenge', () {
       final c = makeToday()..receiveChallenge(challenge);
       c.dismiss();

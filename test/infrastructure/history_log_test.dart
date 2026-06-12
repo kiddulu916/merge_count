@@ -12,13 +12,13 @@ DayResult result(String date,
         {Difficulty difficulty = Difficulty.medium,
         int score = 100,
         int highestTier = 5,
-        bool win = true}) =>
+        bool endedOutOfMoves = true}) =>
     DayResult(
       date: date,
       difficulty: difficulty,
       score: score,
       highestTier: highestTier,
-      win: win,
+      endedOutOfMoves: endedOutOfMoves,
     );
 
 void main() {
@@ -28,11 +28,31 @@ void main() {
           difficulty: Difficulty.legendary,
           score: 4096,
           highestTier: 11,
-          win: false);
+          endedOutOfMoves: false);
       final decoded = DayResult.fromJson(r.toJson());
       expect(decoded, r);
       expect(decoded.difficulty, Difficulty.legendary);
-      expect(decoded.win, isFalse);
+      expect(decoded.endedOutOfMoves, isFalse);
+    });
+
+    test('legacy `win` json key still decodes into endedOutOfMoves '
+        '(migration-free)', () {
+      // A record written before the rename carried `win` with the same fact.
+      final legacy = {
+        'date': '2026-06-07',
+        'difficulty': 'hard',
+        'score': 256,
+        'highestTier': 8,
+        'win': false,
+      };
+      final decoded = DayResult.fromJson(legacy);
+      expect(decoded.endedOutOfMoves, isFalse);
+      expect(decoded.difficulty, Difficulty.hard);
+      expect(decoded.score, 256);
+
+      // And a legacy true value decodes to true.
+      final legacyTrue = Map<String, dynamic>.from(legacy)..['win'] = true;
+      expect(DayResult.fromJson(legacyTrue).endedOutOfMoves, isTrue);
     });
 
     test('value equality', () {
@@ -95,7 +115,10 @@ void main() {
       await s1.appendResult(result('2026-06-06',
           difficulty: Difficulty.hard, score: 256, highestTier: 8));
       await s1.appendResult(result('2026-06-07',
-          difficulty: Difficulty.easy, score: 64, highestTier: 6, win: false));
+          difficulty: Difficulty.easy,
+          score: 64,
+          highestTier: 6,
+          endedOutOfMoves: false));
 
       // A fresh instance reads the same persisted box.
       final s2 = HiveStorageService();
@@ -105,7 +128,7 @@ void main() {
       expect(h[0].difficulty, Difficulty.hard);
       expect(h[0].score, 256);
       expect(h[1].difficulty, Difficulty.easy);
-      expect(h[1].win, isFalse);
+      expect(h[1].endedOutOfMoves, isFalse);
     });
 
     test('caps at kHistoryRetentionDays via Hive', () async {

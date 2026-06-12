@@ -71,7 +71,7 @@ class DuelChallenge {
     if (segs.length < 4) return null;
     final date = segs[0];
     if (!_isValidDate(date)) return null;
-    final diff = _difficultyByName(segs[1]);
+    final diff = Difficulty.values.asNameMap()[segs[1]];
     if (diff == null) return null;
     final score = int.tryParse(segs[2]);
     if (score == null || score < 0) return null;
@@ -101,13 +101,6 @@ class DuelChallenge {
     // Strict YYYY-MM-DD shape (the seed/storage key format).
     final re = RegExp(r'^\d{4}-\d{2}-\d{2}$');
     return re.hasMatch(s);
-  }
-
-  static Difficulty? _difficultyByName(String name) {
-    for (final d in Difficulty.values) {
-      if (d.name == name) return d;
-    }
-    return null;
   }
 
   @override

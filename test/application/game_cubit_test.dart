@@ -199,7 +199,7 @@ void main() {
       final c = GameCubit(
         storage: storage,
         todayProvider: () => '2026-06-06',
-        onCoinsEarned: (coins) => credited += coins,
+        onCoinsEarned: (delta) async => credited += delta,
       );
       await c.init(difficulty: Difficulty.medium);
 
@@ -230,7 +230,7 @@ void main() {
       final c = GameCubit(
         storage: storage,
         todayProvider: () => '2026-06-06',
-        onCoinsEarned: (coins) => credited += coins,
+        onCoinsEarned: (delta) async => credited += delta,
       );
       await c.init(difficulty: Difficulty.medium);
       await c.merge(fromIndex: 0, toIndex: 1);
@@ -256,7 +256,7 @@ void main() {
       final c = GameCubit(
         storage: storage,
         todayProvider: () => '2026-06-06',
-        onCoinsEarned: credits.add,
+        onCoinsEarned: (delta) async => credits.add(delta),
       );
       await c.init(difficulty: Difficulty.medium);
       return (c, credits);
@@ -270,7 +270,7 @@ void main() {
       expect(earned, 2 * kGoldenMergeBonus);
       expect(c.coinsDoubled, isFalse);
 
-      final bonus = c.doubleRunCoins();
+      final bonus = await c.doubleRunCoins();
       expect(bonus, earned); // credits the same amount again
       expect(c.coinsDoubled, isTrue);
       // The wallet hook saw the golden credit then the double of the same total.
@@ -280,8 +280,8 @@ void main() {
     test('doubleRunCoins is idempotent (no triple credit)', () async {
       final (c, _) = await goldenRun();
       await c.merge(fromIndex: 0, toIndex: 1);
-      final first = c.doubleRunCoins();
-      final second = c.doubleRunCoins(); // second call is a no-op
+      final first = await c.doubleRunCoins();
+      final second = await c.doubleRunCoins(); // second call is a no-op
       expect(first, greaterThan(0));
       expect(second, 0);
     });
@@ -290,7 +290,7 @@ void main() {
       final c = make('2026-06-06');
       await c.init(difficulty: Difficulty.medium);
       expect(c.coinsEarnedThisRun, 0);
-      expect(c.doubleRunCoins(), 0);
+      expect(await c.doubleRunCoins(), 0);
       expect(c.coinsDoubled, isFalse);
     });
   });

@@ -180,22 +180,25 @@ class NotificationService {
       ));
     }
 
-    // Midday nudge: a gentle "boards are waiting", also suppressed once done.
-    if (!allTiersDoneToday) {
-      out.add(ScheduledNotification(
-        id: kMiddayId,
-        title: 'Your boards are waiting',
-        body: 'Take a quick break and merge a few tiles.',
-        when: _nextOccurrence(now, middayMinutes),
-      ));
-    }
-
-    // Loot-chest-ready nudge: only while the chest is genuinely unclaimed.
+    // ONE notification at the midday slot (the midday nudge and the loot-ready
+    // nudge previously fired at the SAME instant, double-notifying in the common
+    // morning case). Collapse them: when the chest is unclaimed, emit the
+    // loot-ready nudge and SUPPRESS the generic midday one; otherwise emit the
+    // midday nudge. The suppressed id is omitted from the plan, so [reschedule]
+    // cancels it (both ids stay in [_managedIds]). Both are still suppressed
+    // entirely once all tiers are done.
     if (lootUnclaimed) {
       out.add(ScheduledNotification(
         id: kLootReadyId,
         title: 'Your daily chest is ready',
         body: 'Open today\'s loot chest for a reward.',
+        when: _nextOccurrence(now, middayMinutes),
+      ));
+    } else if (!allTiersDoneToday) {
+      out.add(ScheduledNotification(
+        id: kMiddayId,
+        title: 'Your boards are waiting',
+        body: 'Take a quick break and merge a few tiles.',
         when: _nextOccurrence(now, middayMinutes),
       ));
     }

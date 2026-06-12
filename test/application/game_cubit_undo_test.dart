@@ -184,6 +184,57 @@ void main() {
     });
   });
 
+  group('UNDO refunds golden coins (no farming)', () {
+    /// Resume a board with two golden tier-2 tiles in cells 0/1 so a single
+    /// merge credits a golden bonus without ending the day.
+    Future<GameCubit> goldenCubit(String date, Difficulty diff,
+        Future<void> Function(int delta) onCoins) async {
+      final base = DailySeeder(date, diff).generate().board;
+      final cells = List<Tile?>.of(base.cells);
+      cells[0] = const Tile(id: 900, tier: 2, golden: true);
+      cells[1] = const Tile(id: 901, tier: 2, golden: true);
+      await storage.saveSnapshot(GameSnapshot(
+          date: date,
+          difficulty: diff,
+          board: base.copyWith(cells: cells),
+          completed: false));
+      final c = GameCubit(
+          storage: storage, todayProvider: () => date, onCoinsEarned: onCoins);
+      await c.init(difficulty: diff);
+      return c;
+    }
+
+    test(
+        'golden merge credits N, undo refunds N (wallet net 0), re-merge '
+        'credits once', () async {
+      const date = '2026-06-06';
+      const diff = Difficulty.medium;
+      // The wallet mutates through the single addCoins path (signed delta).
+      Future<void> onCoins(int delta) => storage.addCoins(delta);
+      final c = await goldenCubit(date, diff, onCoins);
+
+      final n = 2 * kGoldenMergeBonus; // two golden tiles consumed
+      expect(storage.loadProfile().coins, 0);
+
+      // Merge the two golden tiles -> wallet credited N, run tally N.
+      await c.merge(fromIndex: 0, toIndex: 1);
+      expect(c.coinsEarnedThisRun, n);
+      expect(storage.loadProfile().coins, n);
+
+      // Undo -> wallet refunded back to 0, run tally back to 0.
+      await c.undo();
+      expect(c.coinsEarnedThisRun, 0);
+      expect(storage.loadProfile().coins, 0,
+          reason: 'undo must refund the golden coins (no farming)');
+
+      // Re-merge the SAME golden tiles -> credits exactly once more, not twice.
+      await c.merge(fromIndex: 0, toIndex: 1);
+      expect(c.coinsEarnedThisRun, n);
+      expect(storage.loadProfile().coins, n,
+          reason: 'merge→undo→re-merge nets a single credit, never farmed');
+    });
+  });
+
   group('UNDO gating + bounds', () {
     test('free undo cap: exactly kFreeUndosPerDay free undos, then no-op',
         () async {

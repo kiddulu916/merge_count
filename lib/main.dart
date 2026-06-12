@@ -253,6 +253,8 @@ class _MergeCountAppState extends State<MergeCountApp> {
         leaderboard: widget.leaderboard,
         friends: widget.friends,
         engagement: widget.engagement,
+        rivalry: widget.rivalry,
+        duels: widget.duels,
         notifications: widget.notifications,
       );
     }

@@ -20,7 +20,16 @@ import 'game_state.dart';
 class _UndoFrame {
   final BoardState board;
   final int landingDraws;
-  const _UndoFrame({required this.board, required this.landingDraws});
+
+  /// Coins this merge credited to the wallet (golden bonus). Refunded on undo so
+  /// merge→undo→re-merge cannot farm coins. 0 when the merge credited nothing.
+  final int coinsCredited;
+
+  const _UndoFrame({
+    required this.board,
+    required this.landingDraws,
+    this.coinsCredited = 0,
+  });
 }
 
 /// Formats a DateTime as the canonical YYYY-MM-DD seeding key.
@@ -60,10 +69,12 @@ class GameCubit extends Cubit<GameState> {
   /// Decoupled (a plain callback) so the cubit stays plugin-free + testable.
   final Future<void> Function({int score, int highestTier})? onTierCompleted;
 
-  /// Optional coins hook (Phase 1). Fired with the bonus when a merge consumes a
-  /// golden tile, so the client-side wallet is credited. Decoupled (a plain
-  /// callback, like [onTierCompleted]) — golden coins NEVER touch `score`.
-  final void Function(int coins)? onCoinsEarned;
+  /// Optional coins hook (Phase 1). Fired with a SIGNED [delta] (positive to
+  /// credit, negative to refund) so the client-side wallet can be both credited
+  /// on a golden merge / completion AND refunded when that merge is undone
+  /// (preventing merge→undo→re-merge coin farming). Awaited so the wallet write
+  /// is durable. Decoupled (like [onTierCompleted]) — coins NEVER touch `score`.
+  final Future<void> Function(int delta)? onCoinsEarned;
 
   late Difficulty _difficulty;
   late String _date;
@@ -167,12 +178,21 @@ class GameCubit extends Cubit<GameState> {
     if (s is! GamePlaying) return;
     if (!GameEngine.canMerge(s.board, fromIndex, toIndex)) return;
 
+    // Golden bonus is computed against the PRE-merge board, then credited to the
+    // wallet via the decoupled callback. It NEVER touches score or the move log.
+    // Computed BEFORE pushing the undo frame so the frame can carry the credited
+    // amount for an exact refund on undo.
+    final goldenBonus =
+        GameEngine.goldenBonusFor(s.board, fromIndex, toIndex);
+
     // Push a pre-merge frame so this merge can be undone. The landing PRNG has
     // taken exactly `dropIndex` draws at this point (one per applied drop), so
-    // that count is the deterministic rewind target. Bounded depth.
+    // that count is the deterministic rewind target. Bounded depth. The frame
+    // records the golden coins this merge credited so undo refunds them.
     _undoStack.add(_UndoFrame(
       board: s.board,
       landingDraws: s.board.dropIndex,
+      coinsCredited: goldenBonus,
     ));
     if (_undoStack.length > kUndoStackDepth) {
       _undoStack.removeAt(0);
@@ -181,11 +201,6 @@ class GameCubit extends Cubit<GameState> {
     // Record the accepted move (same guard as the state change).
     final log = List<MoveEvent>.of(s.board.moveLog)
       ..add(MergeEvent(from: fromIndex, to: toIndex));
-
-    // Golden bonus is computed against the PRE-merge board, then credited to the
-    // wallet via the decoupled callback. It NEVER touches score or the move log.
-    final goldenBonus =
-        GameEngine.goldenBonusFor(s.board, fromIndex, toIndex);
 
     var board = GameEngine.merge(s.board, fromIndex: fromIndex, toIndex: toIndex)
         .copyWith(moveLog: log);
@@ -201,7 +216,7 @@ class GameCubit extends Cubit<GameState> {
 
     if (goldenBonus > 0) {
       _coinsEarnedThisRun += goldenBonus;
-      onCoinsEarned?.call(goldenBonus);
+      await onCoinsEarned?.call(goldenBonus);
     }
 
     final done = board.status != GameStatus.playing;
@@ -219,7 +234,7 @@ class GameCubit extends Cubit<GameState> {
       // wallet hook — never touches score. Tracked so it can be doubled.
       if (firstCompletionToday && kCompletionCoinReward > 0) {
         _coinsEarnedThisRun += kCompletionCoinReward;
-        onCoinsEarned?.call(kCompletionCoinReward);
+        await onCoinsEarned?.call(kCompletionCoinReward);
       }
       // Record the day's result in the append-only history (Phase 4), once per
       // locked tier-day (same guard as the stats fold). The run is now locked,
@@ -230,8 +245,8 @@ class GameCubit extends Cubit<GameState> {
           difficulty: _difficulty,
           score: board.score,
           highestTier: board.highestTier,
-          // A "win" means the budget was spent down rather than dead-ending.
-          win: board.status == GameStatus.outOfMoves,
+          // Factual end state (not a win/loss): out-of-moves vs deadlocked.
+          endedOutOfMoves: board.status == GameStatus.outOfMoves,
         ));
       }
       _undoStack.clear();
@@ -292,6 +307,13 @@ class GameCubit extends Cubit<GameState> {
   /// Pop the most-recent frame and restore board + landing-PRNG together.
   Future<void> _applyUndo() async {
     final frame = _undoStack.removeLast();
+    // Refund any golden coins this merge credited, so merge→undo→re-merge can't
+    // farm coins. Floor the run tally at 0 and refund the wallet (signed delta).
+    if (frame.coinsCredited > 0) {
+      _coinsEarnedThisRun -= frame.coinsCredited;
+      if (_coinsEarnedThisRun < 0) _coinsEarnedThisRun = 0;
+      await onCoinsEarned?.call(-frame.coinsCredited);
+    }
     // Rewind stream B to the saved position (deterministic rebuild).
     _landing = _rebuildLandingTo(frame.landingDraws);
     // Persist the restored (not-completed) board so a resume sees the rewind.
@@ -404,11 +426,11 @@ class GameCubit extends Cubit<GameState> {
   /// grants. Credits the run's earned coins a second time via the same wallet
   /// hook. Idempotent: a no-op if already doubled or nothing was earned. Returns
   /// the amount credited (0 when nothing happened). NEVER affects score.
-  int doubleRunCoins() {
+  Future<int> doubleRunCoins() async {
     if (_coinsDoubled || _coinsEarnedThisRun <= 0) return 0;
     _coinsDoubled = true;
     final bonus = _coinsEarnedThisRun;
-    onCoinsEarned?.call(bonus);
+    await onCoinsEarned?.call(bonus);
     return bonus;
   }
 

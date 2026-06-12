@@ -88,17 +88,38 @@ void main() {
     });
 
     group('Phase 1 staggered nudges', () {
-      test('not done -> midday nudge scheduled at the midday slot', () {
+      test(
+          'not done + loot claimed -> midday nudge fires (and loot-ready does '
+          'NOT, only one at the slot)', () {
         final plan = NotificationService.planFor(
           now: now(),
           reminderMinutes: 19 * 60,
           enabled: true,
           allTiersDoneToday: false,
           streakAtRisk: false,
+          lootUnclaimed: false,
           middayMinutes: 12 * 60,
         );
         final midday = plan.firstWhere((n) => n.id == kMiddayId);
         expect(midday.when.hour, 12);
+        // Exactly one notification occupies the midday slot.
+        expect(plan.any((n) => n.id == kLootReadyId), isFalse);
+      });
+
+      test(
+          'loot unclaimed -> ONLY the loot-ready nudge fires at the slot, the '
+          'midday nudge is suppressed (no duplicate at the same instant)', () {
+        final plan = NotificationService.planFor(
+          now: now(),
+          reminderMinutes: 19 * 60,
+          enabled: true,
+          allTiersDoneToday: false,
+          streakAtRisk: false,
+          lootUnclaimed: true,
+          middayMinutes: 12 * 60,
+        );
+        expect(plan.any((n) => n.id == kLootReadyId), isTrue);
+        expect(plan.any((n) => n.id == kMiddayId), isFalse);
       });
 
       test('all tiers done -> midday nudge suppressed', () {

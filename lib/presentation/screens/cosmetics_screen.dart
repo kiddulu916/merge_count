@@ -5,6 +5,7 @@ import '../../application/engagement_cubit.dart';
 import '../../domain/models/cosmetic.dart';
 import '../../infrastructure/ad_service.dart';
 import '../theme/tile_palette.dart';
+import '../widgets/coin_balance.dart';
 import '../widgets/price_tag.dart';
 
 /// Pick a tile theme. Unlocked cosmetics are selectable; locked ones show their
@@ -47,18 +48,7 @@ class _CosmeticsScreenState extends State<CosmeticsScreen> {
             actions: [
               Padding(
                 padding: const EdgeInsets.only(right: 16),
-                child: Row(
-                  key: const Key('cosmetics-coin-balance'),
-                  children: [
-                    const Icon(Icons.monetization_on,
-                        color: Colors.amberAccent, size: 18),
-                    const SizedBox(width: 4),
-                    Text('${state.coins}',
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800)),
-                  ],
-                ),
+                child: Center(child: CoinBalance(coins: state.coins)),
               ),
             ],
           ),

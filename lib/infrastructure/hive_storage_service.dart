@@ -88,6 +88,14 @@ class HiveStorageService implements StorageService {
   }
 
   @override
+  Future<int> addCoins(int delta) async {
+    final profile = loadProfile();
+    final next = (profile.coins + delta) < 0 ? 0 : profile.coins + delta;
+    await saveProfile(profile.copyWith(coins: next));
+    return next;
+  }
+
+  @override
   List<DayResult> loadHistory() {
     final raw = _box.get(_historyKey);
     // Absent (pre-Phase-4) or corrupt: empty list (migration-free).

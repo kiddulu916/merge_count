@@ -48,7 +48,19 @@ class GameEngine {
       {bool golden = false}) {
     final empties = s.emptyIndices;
     if (empties.isEmpty) {
-      // Invariant means this should never happen, but stay total.
+      // The occupancy invariant (a merge always frees a cell before its drop)
+      // guarantees this branch is unreachable. We assert loudly in debug because
+      // taking it WITHOUT a landing draw would silently break the
+      // `dropIndex == landing-draws` coupling that undo's `_rebuildLandingTo` and
+      // init-on-resume both depend on (a latent PRNG desync vs the server replay).
+      // We deliberately do NOT take a landing draw here (changing draw counts
+      // would itself diverge from the server replay); we just stay total in
+      // release by advancing dropIndex so the run can still finish.
+      assert(
+          empties.isNotEmpty,
+          'occupancy invariant: a drop always has a landing cell; if this ever '
+          'fires, the dropIndex==landing-draws coupling that undo/resume depend '
+          'on is broken');
       return s.copyWith(dropIndex: s.dropIndex + 1);
     }
     final idx = empties[landing.nextInt(empties.length)];

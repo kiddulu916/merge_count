@@ -201,8 +201,8 @@ class _GameScreenState extends State<GameScreen> {
   /// the run's earned coins again, then refreshes so the button hides.
   void _watchDoubleCoins(BuildContext context, GameCubit cubit) {
     adService.showRewarded(
-      onReward: () {
-        final bonus = cubit.doubleRunCoins();
+      onReward: () async {
+        final bonus = await cubit.doubleRunCoins();
         if (bonus > 0) {
           widget.engagement?.refreshWallet();
           if (mounted) setState(() {}); // hide the button / reflect doubled

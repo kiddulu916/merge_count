@@ -82,6 +82,9 @@ class DuelCubit extends Cubit<DuelState> {
   }) {
     final c = state.challenge;
     if (c == null) return;
+    // An expired challenge's board is no longer playable, so it can never be
+    // honestly settled — guard before any comparison.
+    if (state.expired) return;
     if (c.date != date || c.difficulty != difficulty) return;
     emit(state.copyWith(
       myScore: myScore,

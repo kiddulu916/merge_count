@@ -314,6 +314,13 @@ abstract class StorageService {
   PlayerProfile loadProfile();
   Future<void> saveProfile(PlayerProfile profile);
 
+  /// The SINGLE awaited path for a pure coin credit/refund: loads the profile,
+  /// writes `coins = max(0, coins + delta)` (clamped at 0), awaits the save, and
+  /// returns the new balance. [delta] is signed (positive credit, negative
+  /// refund). Atomic compound writes (loot claim, cosmetic purchase) stay
+  /// combined elsewhere — this is only for standalone coin movement.
+  Future<int> addCoins(int delta);
+
   /// Append-only day-result history (Phase 4), powering the stats calendar.
   /// [loadHistory] returns the persisted results in insertion (chronological)
   /// order, oldest first; an empty list when nothing has been recorded (so it
@@ -359,6 +366,13 @@ class InMemoryStorageService implements StorageService {
   @override
   Future<void> saveProfile(PlayerProfile profile) async {
     _profile = profile;
+  }
+
+  @override
+  Future<int> addCoins(int delta) async {
+    final next = (_profile.coins + delta) < 0 ? 0 : _profile.coins + delta;
+    _profile = _profile.copyWith(coins: next);
+    return next;
   }
 
   @override

@@ -20,16 +20,19 @@ class DayResult {
   /// Highest tile tier reached during the run.
   final int highestTier;
 
-  /// Whether the run was a "win" — i.e. it ran the full move budget out rather
-  /// than dead-ending early (out of moves, not deadlocked).
-  final bool win;
+  /// Factual end-of-run state: true when the run ended because the move budget
+  /// was spent ([GameStatus.outOfMoves]), false when it dead-ended early
+  /// (deadlocked). This is NOT a win/loss — there is no win condition (the game
+  /// is a high-score chase); a high-scoring deadlock is a strong day, not a
+  /// loss. The calendar reads OUTCOME QUALITY (score/highestTier) instead.
+  final bool endedOutOfMoves;
 
   const DayResult({
     required this.date,
     required this.difficulty,
     required this.score,
     required this.highestTier,
-    required this.win,
+    required this.endedOutOfMoves,
   });
 
   Map<String, dynamic> toJson() => {
@@ -37,7 +40,7 @@ class DayResult {
         'difficulty': difficulty.name,
         'score': score,
         'highestTier': highestTier,
-        'win': win,
+        'endedOutOfMoves': endedOutOfMoves,
       };
 
   static DayResult fromJson(Map<String, dynamic> j) => DayResult(
@@ -45,7 +48,10 @@ class DayResult {
         difficulty: Difficulty.values.byName(j['difficulty'] as String),
         score: j['score'] as int,
         highestTier: j['highestTier'] as int,
-        win: j['win'] as bool,
+        // Migration-free: accept the legacy `win` key as a fallback for records
+        // written before this field was renamed (it carried the same fact).
+        endedOutOfMoves:
+            (j['endedOutOfMoves'] as bool?) ?? (j['win'] as bool? ?? false),
       );
 
   @override
@@ -55,13 +61,15 @@ class DayResult {
       other.difficulty == difficulty &&
       other.score == score &&
       other.highestTier == highestTier &&
-      other.win == win;
+      other.endedOutOfMoves == endedOutOfMoves;
 
   @override
-  int get hashCode => Object.hash(date, difficulty, score, highestTier, win);
+  int get hashCode =>
+      Object.hash(date, difficulty, score, highestTier, endedOutOfMoves);
 
   @override
   String toString() =>
       'DayResult(date: $date, difficulty: ${difficulty.name}, '
-      'score: $score, highestTier: $highestTier, win: $win)';
+      'score: $score, highestTier: $highestTier, '
+      'endedOutOfMoves: $endedOutOfMoves)';
 }

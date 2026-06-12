@@ -4,11 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:timezone/timezone.dart' as tz;
 
+import '../../application/duel_cubit.dart';
 import '../../application/engagement_cubit.dart';
 import '../../application/game_cubit.dart';
 import '../../application/loot_cubit.dart';
 import '../../application/loot_state.dart';
+import '../../application/rivalry_cubit.dart';
 import '../../domain/models/difficulty.dart';
+import '../../domain/models/duel_challenge.dart';
 import '../../infrastructure/ad_service.dart';
 import '../../infrastructure/friends_service.dart';
 import '../../infrastructure/leaderboard_service.dart';
@@ -16,6 +19,8 @@ import '../../infrastructure/notification_service.dart';
 import '../../infrastructure/storage_service.dart';
 import '../theme/tile_palette.dart';
 import '../widgets/coin_balance.dart';
+import '../widgets/duel_banner.dart';
+import '../widgets/rival_indicator.dart';
 import '../widgets/streak_banner.dart';
 import 'achievements_screen.dart';
 import 'almanac_screen.dart';
@@ -49,6 +54,14 @@ class TierSelectScreen extends StatefulWidget {
   /// [storage].
   final LootCubit? loot;
 
+  /// Phase 3 rivalry cubit. When null, a local cubit is created from [storage]
+  /// (owned + closed locally, mirroring [engagement]/[loot]).
+  final RivalryCubit? rivalry;
+
+  /// Phase 3 async-duel cubit. Held as-is (nullable) — never created locally,
+  /// since an incoming duel rides in from a deep link via the app shell.
+  final DuelCubit? duels;
+
   /// Local notification scheduler. Null in tests / when unavailable.
   final NotificationService? notifications;
 
@@ -68,6 +81,8 @@ class TierSelectScreen extends StatefulWidget {
     this.friends,
     this.engagement,
     this.loot,
+    this.rivalry,
+    this.duels,
     this.notifications,
     this.todayProvider,
     this.onTierSelected,
@@ -95,6 +110,14 @@ class _TierSelectScreenState extends State<TierSelectScreen> {
   late final LootCubit _loot;
   bool _ownsLoot = false;
 
+  /// Rivalry cubit (provided, or created locally). Owned locally only when made.
+  late final RivalryCubit _rivalry;
+  bool _ownsRivalry = false;
+
+  /// Duel cubit, held verbatim from the widget (never created locally; null when
+  /// the social layer is off / in tests that don't pass one).
+  DuelCubit? get _duelsCubit => widget.duels;
+
   @override
   void initState() {
     super.initState();
@@ -108,6 +131,8 @@ class _TierSelectScreenState extends State<TierSelectScreen> {
             storage: widget.storage, todayProvider: widget.todayProvider)
           ..load());
     _ownsLoot = widget.loot == null;
+    _rivalry = widget.rivalry ?? (RivalryCubit(storage: widget.storage)..load());
+    _ownsRivalry = widget.rivalry == null;
     _untilReset = _computeUntilReset();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
@@ -135,6 +160,7 @@ class _TierSelectScreenState extends State<TierSelectScreen> {
     _ticker?.cancel();
     if (_ownsEngagement) _engagement.close();
     if (_ownsLoot) _loot.close();
+    if (_ownsRivalry) _rivalry.close();
     super.dispose();
   }
 
@@ -221,6 +247,7 @@ class _TierSelectScreenState extends State<TierSelectScreen> {
         builder: (_) => FriendsScreen(
           service: service,
           todayProvider: widget.today,
+          rivalry: _rivalry,
         ),
       ),
     );
@@ -232,6 +259,9 @@ class _TierSelectScreenState extends State<TierSelectScreen> {
       override(context, difficulty);
       return;
     }
+    // Capture the messenger now so settling a duel after the game returns never
+    // touches a possibly-defunct BuildContext across the async navigation gap.
+    final messenger = ScaffoldMessenger.of(context);
     Navigator.of(context)
         .push(
           MaterialPageRoute<void>(
@@ -254,8 +284,35 @@ class _TierSelectScreenState extends State<TierSelectScreen> {
         )
         .then((_) {
           if (mounted) setState(() {}); // refresh "done today" badges
+          _settleDuelIfMatched(messenger, difficulty);
           _rescheduleNotifications();
         });
+  }
+
+  /// After a game returns, settle an active duel whose `(date, difficulty)`
+  /// matches the just-played tier: read the completed snapshot's score and feed
+  /// it to the duel cubit, then surface the win/lose/tie outcome via the
+  /// captured [messenger]. The duel score is DISPLAY-ONLY — this never touches
+  /// any leaderboard row.
+  void _settleDuelIfMatched(
+      ScaffoldMessengerState messenger, Difficulty difficulty) {
+    final duels = widget.duels;
+    if (duels == null) return;
+    final challenge = duels.state.challenge;
+    if (challenge == null) return;
+    final today = widget.today();
+    if (challenge.date != today || challenge.difficulty != difficulty) return;
+    final score = widget.storage.loadSnapshot(today, difficulty)?.board.score;
+    if (score == null) return;
+    duels.recordMyResult(date: today, difficulty: difficulty, myScore: score);
+    final outcome = duels.state.outcome;
+    if (outcome == null) return;
+    final msg = switch (outcome) {
+      DuelOutcome.win => 'You won the duel!',
+      DuelOutcome.lose => 'You lost the duel — rematch?',
+      DuelOutcome.tie => 'The duel was a tie!',
+    };
+    messenger.showSnackBar(SnackBar(content: Text(msg)));
   }
 
   /// Completion hook fired by [GameCubit] when a tier's day is locked: advance
@@ -359,13 +416,14 @@ class _TierSelectScreenState extends State<TierSelectScreen> {
         });
   }
 
-  /// Credit golden-tile bonus coins to the wallet (Phase 1). Decoupled hook
-  /// passed to [GameCubit]; coins never touch score. Refreshes the loot cubit
-  /// so the coin pill reflects the new balance.
-  void _creditCoins(int coins) {
-    if (coins <= 0) return;
-    final profile = widget.storage.loadProfile();
-    widget.storage.saveProfile(profile.copyWith(coins: profile.coins + coins));
+  /// Apply a signed coin [delta] to the wallet (Phase 1). Decoupled hook passed
+  /// to [GameCubit]; coins never touch score. Goes through the single awaited
+  /// [StorageService.addCoins] path (credit on golden merge / completion, refund
+  /// on undo) so the write is durable and races/app-kill can't drop it. Refreshes
+  /// the loot cubit so the coin pill reflects the new balance.
+  Future<void> _creditCoins(int delta) async {
+    if (delta == 0) return;
+    await widget.storage.addCoins(delta);
     _loot.load();
   }
 
@@ -455,6 +513,37 @@ class _TierSelectScreenState extends State<TierSelectScreen> {
                   );
                 },
               ),
+              BlocBuilder<RivalryCubit, RivalryState>(
+                bloc: _rivalry,
+                builder: (context, riv) {
+                  if (!riv.hasRival || riv.rivalName == null) {
+                    return const SizedBox.shrink();
+                  }
+                  // First still-incomplete tier: my best vs the rival's last
+                  // seen on that tier (display-only, never a leaderboard write).
+                  final tier = Difficulty.values.firstWhere(
+                    (d) => !_isCompleted(d),
+                    orElse: () => Difficulty.values.first,
+                  );
+                  final mine = widget.storage
+                          .loadSnapshot(widget.today(), tier)
+                          ?.board
+                          .score ??
+                      0;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Center(
+                      child: RivalIndicator(
+                        rivalName: riv.rivalName!,
+                        delta: RivalDelta(
+                          myScore: mine,
+                          rivalScore: riv.lastSeenFor(tier) ?? 0,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
               const SizedBox(height: 4),
               const Text('Choose your daily challenge',
                   textAlign: TextAlign.center,
@@ -512,7 +601,27 @@ class _TierSelectScreenState extends State<TierSelectScreen> {
                   );
                 },
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
+              if (widget.duels != null)
+                BlocBuilder<DuelCubit, DuelState>(
+                  bloc: _duelsCubit,
+                  builder: (context, duel) {
+                    final challenge = duel.challenge;
+                    if (challenge == null) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: DuelBanner(
+                        challenge: challenge,
+                        expired: duel.expired,
+                        onPlay: () =>
+                            _startTier(context, challenge.difficulty),
+                        onPlayToday: () =>
+                            _startTier(context, challenge.difficulty),
+                        onDismiss: () => widget.duels!.dismiss(),
+                      ),
+                    );
+                  },
+                ),
               Expanded(
                 child: ListView(
                   children: [
