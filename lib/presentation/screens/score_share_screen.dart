@@ -171,7 +171,7 @@ class ScoreShareScreen extends StatelessWidget {
   Future<void> _invite(BuildContext context) async {
     final code = friendCode;
     if (code == null) return;
-    final text = 'Add me on Merge Loop! ${FriendsService.inviteLink(code)}';
+    final text = 'Add me on Merge Count! ${FriendsService.inviteLink(code)}';
     final share = shareText ?? _nativeShare;
     await share(text);
   }
@@ -179,7 +179,7 @@ class ScoreShareScreen extends StatelessWidget {
   /// Native share sheet via share_plus (device). Used in production when no
   /// [shareText] seam is injected.
   static Future<void> _nativeShare(String text) =>
-      Share.share(text, subject: 'Merge Loop');
+      Share.share(text, subject: 'Merge Count');
 
   Widget _achievementsBanner() => Container(
         key: const Key('newly-unlocked-banner'),

@@ -8,7 +8,7 @@ class ShareGridBuilder {
   static String build({required String date, required BoardState board}) {
     final best = board.highestTier;
     final sb = StringBuffer()
-      ..writeln('Merge Loop $date')
+      ..writeln('Merge Count $date')
       ..writeln(
           'Score ${board.score} · Best ${emojiForTier(best)}${1 << best} · ${board.movesMade} moves');
 

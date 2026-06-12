@@ -104,9 +104,9 @@ class _FriendsScreenState extends State<FriendsScreen> {
     final code = _myCode;
     if (code == null) return;
     final link = FriendsService.inviteLink(code);
-    final text = 'Add me on Merge Loop! $link';
+    final text = 'Add me on Merge Count! $link';
     final share = widget.shareInvite ??
-        (String t) async => Share.share(t, subject: 'Merge Loop invite');
+        (String t) async => Share.share(t, subject: 'Merge Count invite');
     await share(text);
   }
 
@@ -132,8 +132,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
       setState(() {
         _matched = matches;
         _status = matches.isEmpty
-            ? 'No contacts are on Merge Loop yet.'
-            : 'Found ${matches.length} contact(s) on Merge Loop.';
+            ? 'No contacts are on Merge Count yet.'
+            : 'Found ${matches.length} contact(s) on Merge Count.';
       });
     } catch (_) {
       if (mounted) setState(() => _status = 'Could not match contacts.');
