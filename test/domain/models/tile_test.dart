@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:merge_loop/domain/models/tile.dart';
+import 'package:merge_count/domain/models/tile.dart';
 
 void main() {
   test('value is 2^tier', () {

@@ -1,14 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:merge_loop/application/game_cubit.dart';
-import 'package:merge_loop/application/game_state.dart';
-import 'package:merge_loop/domain/constants.dart';
-import 'package:merge_loop/domain/engine/daily_seeder.dart';
-import 'package:merge_loop/domain/engine/game_engine.dart';
-import 'package:merge_loop/domain/models/board_state.dart';
-import 'package:merge_loop/domain/models/difficulty.dart';
-import 'package:merge_loop/domain/models/game_status.dart';
-import 'package:merge_loop/domain/models/move.dart';
-import 'package:merge_loop/infrastructure/storage_service.dart';
+import 'package:merge_count/application/game_cubit.dart';
+import 'package:merge_count/application/game_state.dart';
+import 'package:merge_count/domain/constants.dart';
+import 'package:merge_count/domain/engine/daily_seeder.dart';
+import 'package:merge_count/domain/engine/game_engine.dart';
+import 'package:merge_count/domain/models/board_state.dart';
+import 'package:merge_count/domain/models/difficulty.dart';
+import 'package:merge_count/domain/models/game_status.dart';
+import 'package:merge_count/domain/models/move.dart';
+import 'package:merge_count/infrastructure/storage_service.dart';
 
 void main() {
   late InMemoryStorageService storage;

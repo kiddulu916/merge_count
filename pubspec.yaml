@@ -1,4 +1,4 @@
-name: merge_loop
+name: merge_count
 description: A deterministic daily merge puzzle.
 publish_to: "none"
 version: 1.0.0+1

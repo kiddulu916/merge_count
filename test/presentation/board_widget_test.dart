@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:merge_loop/domain/constants.dart';
-import 'package:merge_loop/domain/models/board_state.dart';
-import 'package:merge_loop/domain/models/game_status.dart';
-import 'package:merge_loop/domain/models/tile.dart';
-import 'package:merge_loop/presentation/widgets/board_widget.dart';
+import 'package:merge_count/domain/constants.dart';
+import 'package:merge_count/domain/models/board_state.dart';
+import 'package:merge_count/domain/models/game_status.dart';
+import 'package:merge_count/domain/models/tile.dart';
+import 'package:merge_count/presentation/widgets/board_widget.dart';
 
 void main() {
   testWidgets('reports a merge when a tile is dragged onto a matching tile', (tester) async {

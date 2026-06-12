@@ -2,13 +2,13 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
-import 'package:merge_loop/domain/constants.dart';
-import 'package:merge_loop/domain/models/board_state.dart';
-import 'package:merge_loop/domain/models/difficulty.dart';
-import 'package:merge_loop/domain/models/game_status.dart';
-import 'package:merge_loop/domain/models/tile.dart';
-import 'package:merge_loop/infrastructure/hive_storage_service.dart';
-import 'package:merge_loop/infrastructure/storage_service.dart';
+import 'package:merge_count/domain/constants.dart';
+import 'package:merge_count/domain/models/board_state.dart';
+import 'package:merge_count/domain/models/difficulty.dart';
+import 'package:merge_count/domain/models/game_status.dart';
+import 'package:merge_count/domain/models/tile.dart';
+import 'package:merge_count/infrastructure/hive_storage_service.dart';
+import 'package:merge_count/infrastructure/storage_service.dart';
 
 void main() {
   setUp(() {

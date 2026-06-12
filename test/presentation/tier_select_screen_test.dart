@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:merge_loop/domain/constants.dart';
-import 'package:merge_loop/domain/models/board_state.dart';
-import 'package:merge_loop/domain/models/difficulty.dart';
-import 'package:merge_loop/domain/models/game_status.dart';
-import 'package:merge_loop/domain/models/tile.dart';
-import 'package:merge_loop/infrastructure/ad_service.dart';
-import 'package:merge_loop/infrastructure/storage_service.dart';
-import 'package:merge_loop/presentation/screens/tier_select_screen.dart';
+import 'package:merge_count/domain/constants.dart';
+import 'package:merge_count/domain/models/board_state.dart';
+import 'package:merge_count/domain/models/difficulty.dart';
+import 'package:merge_count/domain/models/game_status.dart';
+import 'package:merge_count/domain/models/tile.dart';
+import 'package:merge_count/infrastructure/ad_service.dart';
+import 'package:merge_count/infrastructure/storage_service.dart';
+import 'package:merge_count/presentation/screens/tier_select_screen.dart';
 
 void main() {
   testWidgets('renders all four tiers with their tile counts', (tester) async {

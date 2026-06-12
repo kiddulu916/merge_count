@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:merge_loop/domain/models/achievement.dart';
-import 'package:merge_loop/domain/models/cosmetic.dart';
-import 'package:merge_loop/presentation/theme/tile_palette.dart';
-import 'package:merge_loop/presentation/widgets/grid_cell_widget.dart';
-import 'package:merge_loop/domain/models/tile.dart';
+import 'package:merge_count/domain/models/achievement.dart';
+import 'package:merge_count/domain/models/cosmetic.dart';
+import 'package:merge_count/presentation/theme/tile_palette.dart';
+import 'package:merge_count/presentation/widgets/grid_cell_widget.dart';
+import 'package:merge_count/domain/models/tile.dart';
 
 void main() {
   group('TilePalette cosmetics', () {

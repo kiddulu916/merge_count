@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:merge_loop/domain/constants.dart';
+import 'package:merge_count/domain/constants.dart';
 
 void main() {
   test('board geometry is 5x5 = 25 cells', () {

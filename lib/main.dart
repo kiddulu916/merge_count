@@ -79,7 +79,7 @@ Future<void> main() async {
     await deepLinks.init();
   }
 
-  runApp(MergeLoopApp(
+  runApp(MergeCountApp(
     storage: storage,
     adService: adService,
     auth: auth,
@@ -92,7 +92,7 @@ Future<void> main() async {
   ));
 }
 
-class MergeLoopApp extends StatefulWidget {
+class MergeCountApp extends StatefulWidget {
   final HiveStorageService storage;
   final AdService adService;
   final AuthService? auth;
@@ -103,7 +103,7 @@ class MergeLoopApp extends StatefulWidget {
   final NotificationService notifications;
   final bool needsDisplayName;
 
-  const MergeLoopApp({
+  const MergeCountApp({
     super.key,
     required this.storage,
     required this.adService,
@@ -117,10 +117,10 @@ class MergeLoopApp extends StatefulWidget {
   });
 
   @override
-  State<MergeLoopApp> createState() => _MergeLoopAppState();
+  State<MergeCountApp> createState() => _MergeCountAppState();
 }
 
-class _MergeLoopAppState extends State<MergeLoopApp> {
+class _MergeCountAppState extends State<MergeCountApp> {
   late bool _needsDisplayName;
   final _navKey = GlobalKey<NavigatorState>();
   final _messengerKey = GlobalKey<ScaffoldMessengerState>();

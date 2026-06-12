@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:merge_loop/domain/constants.dart';
-import 'package:merge_loop/domain/engine/daily_seeder.dart';
-import 'package:merge_loop/domain/models/difficulty.dart';
+import 'package:merge_count/domain/constants.dart';
+import 'package:merge_count/domain/engine/daily_seeder.dart';
+import 'package:merge_count/domain/models/difficulty.dart';
 
 void main() {
   test('same date+tier yields identical initial board and drop tiers', () {

@@ -2,10 +2,10 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:merge_loop/domain/constants.dart';
-import 'package:merge_loop/domain/models/difficulty.dart';
-import 'package:merge_loop/domain/models/game_status.dart';
-import 'package:merge_loop/infrastructure/practice_seeder.dart';
+import 'package:merge_count/domain/constants.dart';
+import 'package:merge_count/domain/models/difficulty.dart';
+import 'package:merge_count/domain/models/game_status.dart';
+import 'package:merge_count/infrastructure/practice_seeder.dart';
 
 void main() {
   group('PracticeSeeder produces valid, playable boards', () {
