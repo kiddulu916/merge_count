@@ -56,8 +56,22 @@ class DailySeeder {
     return out;
   }
 
+  /// Deterministic wall cells for this date+tier, drawn from an independent
+  /// `'$_key:walls'` stream so it never perturbs board/drop/landing streams.
+  Set<int> wallIndices() {
+    final count = wallCountFor(difficulty);
+    if (count == 0) return const {};
+    final w = Prng(seedForKey('$_key:walls'));
+    final out = <int>{};
+    while (out.length < count) {
+      out.add(w.nextInt(kCellCount)); // rejection sampling; deterministic
+    }
+    return out;
+  }
+
   DailyStart generate() {
     final a = Prng(_seedA);
+    final walls = wallIndices();
 
     // Initial board: difficulty.startingFill tiles of tier 1-2 in
     // deterministic cells.
@@ -67,7 +81,7 @@ class DailySeeder {
     final startingFill = difficulty.startingFill;
     while (placed < startingFill) {
       final idx = a.nextInt(kCellCount);
-      if (cells[idx] != null) continue; // rejection sampling; deterministic
+      if (cells[idx] != null || walls.contains(idx)) continue; // skip walls
       cells[idx] = Tile(id: nextId++, tier: 1 + a.nextInt(2));
       placed++;
     }
@@ -87,6 +101,7 @@ class DailySeeder {
       adContinuesUsed: 0,
       movesMade: 0,
       status: GameStatus.playing,
+      walls: walls,
     );
     return DailyStart(board, tiers);
   }

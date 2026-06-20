@@ -134,4 +134,26 @@ void main() {
       expect(ratio, lessThan(0.18));
     });
   });
+
+  group('Connect-Merge seeding', () {
+    test('wallIndices is deterministic and sized per difficulty', () {
+      final s = DailySeeder('2026-06-20', Difficulty.hard);
+      expect(s.wallIndices().length, wallCountFor(Difficulty.hard));
+      expect(s.wallIndices(), DailySeeder('2026-06-20', Difficulty.hard).wallIndices());
+    });
+
+    test('easy has no walls', () {
+      expect(DailySeeder('2026-06-20', Difficulty.easy).wallIndices(), isEmpty);
+    });
+
+    test('generated board carries walls and never places a tile on one', () {
+      final s = DailySeeder('2026-06-20', Difficulty.legendary);
+      final start = s.generate();
+      expect(start.board.walls, s.wallIndices());
+      for (final w in start.board.walls) {
+        expect(start.board.cells[w], isNull);
+      }
+      expect(start.board.filledCount, Difficulty.legendary.startingFill);
+    });
+  });
 }
