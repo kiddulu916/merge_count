@@ -309,6 +309,62 @@ void main() {
       expect(c.coinsDoubled, isFalse);
     });
   });
+
+  test('playChain collapses a valid 2-path, scores, and tops the board back up',
+      () async {
+    final storage = InMemoryStorageService();
+    final cubit = GameCubit(storage: storage, todayProvider: () => '2026-06-20');
+    await cubit.init(difficulty: Difficulty.easy);
+    final before = (cubit.state as GamePlaying).board;
+
+    // Find any orthogonally-adjacent equal-tier pair on the seeded board.
+    int? from, to;
+    for (var i = 0; i < kCellCount && from == null; i++) {
+      final t = before.cells[i];
+      if (t == null || t.tier >= kMaxTier) continue;
+      for (final n in [i + 1, i + kGridSize]) {
+        if (n >= kCellCount) continue;
+        if (n == i + 1 && (i % kGridSize) == kGridSize - 1) continue; // row wrap
+        final u = before.cells[n];
+        if (u != null && u.tier == t.tier) {
+          from = i;
+          to = n;
+          break;
+        }
+      }
+    }
+    expect(from, isNotNull, reason: 'seeded easy board should have a merge');
+
+    await cubit.playChain([from!, to!]);
+    final after = (cubit.state as GamePlaying).board;
+
+    expect(after.score, greaterThan(before.score));
+    expect(after.movesRemaining, before.movesRemaining - 1);
+    // Board topped back up to the difficulty fill (a 2-chain frees 1, drops 1).
+    expect(after.filledCount, Difficulty.easy.startingFill);
+    expect(after.moveLog.last, isA<ChainEvent>());
+  });
+
+  test('playChain rejects an invalid path (no state change)', () async {
+    final storage = InMemoryStorageService();
+    final cubit = GameCubit(storage: storage, todayProvider: () => '2026-06-20');
+    await cubit.init(difficulty: Difficulty.easy);
+    final before = (cubit.state as GamePlaying).board;
+    await cubit.playChain([0, 24]); // not adjacent / likely empty
+    final after = (cubit.state as GamePlaying).board;
+    expect(after.score, before.score);
+    expect(after.movesRemaining, before.movesRemaining);
+  });
+
+  test('peekDropTiers returns the next tiers without consuming them', () async {
+    final storage = InMemoryStorageService();
+    final cubit = GameCubit(storage: storage, todayProvider: () => '2026-06-20');
+    await cubit.init(difficulty: Difficulty.easy);
+    final a = cubit.peekDropTiers();
+    final b = cubit.peekDropTiers();
+    expect(a.length, kDropQueueVisible);
+    expect(a, b); // idempotent (no consumption)
+  });
 }
 
 /// Persist a completed snapshot + run completion bookkeeping for [tier] on

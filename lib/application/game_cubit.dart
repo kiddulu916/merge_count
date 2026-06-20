@@ -5,6 +5,7 @@ import '../domain/engine/daily_seeder.dart';
 import '../domain/engine/game_engine.dart';
 import '../domain/engine/prng.dart';
 import '../domain/models/board_state.dart';
+import '../domain/models/daily_objective.dart';
 import '../domain/models/difficulty.dart';
 import '../domain/models/day_result.dart';
 import '../domain/models/game_status.dart';
@@ -78,7 +79,15 @@ class GameCubit extends Cubit<GameState> {
 
   late Difficulty _difficulty;
   late String _date;
-  late List<int> _dropTiers;
+
+  /// On-demand drop-tier stream (stream "drops"), advanced in lock-step with
+  /// dropIndex exactly like [_landing]. Rebuilt by replay on resume/undo.
+  late Prng _dropTier;
+
+  /// The day's objective (seed-derived). Read by the UI and tracked per chain.
+  late DailyObjective _objective;
+  DailyObjective get objective => _objective;
+
   late Prng _landing;
 
   /// The day's seeder, retained so the landing PRNG can be rebuilt from seed and
@@ -126,6 +135,9 @@ class GameCubit extends Cubit<GameState> {
   /// Whether the double-coins reward has already been claimed this run.
   bool get coinsDoubled => _coinsDoubled;
 
+  /// Whether the objective reward has already been paid this run (idempotency).
+  bool _objectiveMet = false;
+
   GameCubit({
     required this.storage,
     String Function()? todayProvider,
@@ -140,15 +152,17 @@ class GameCubit extends Cubit<GameState> {
     _date = todayProvider();
     _seeder = DailySeeder(_date, difficulty);
     final start = _seeder.generate();
-    _dropTiers = start.dropTiers;
     _goldenDrops = _seeder.goldenDropIndices();
+    _objective = _seeder.dailyObjective();
     // A fresh init (or resume) starts with no rewindable history.
     _undoStack.clear();
     _undosUsed = 0;
+    _objectiveMet = false;
 
     final snap = storage.loadSnapshot(_date, difficulty);
-    if (snap != null && snap.date == _date) {
-      // Resume today: rebuild the landing stream to the saved position.
+    if (snap != null && snap.date == _date && snap.version == kSnapshotVersion) {
+      // Resume today: rebuild both streams to the saved position.
+      _dropTier = _rebuildDropTierTo(snap.board.dropIndex);
       _landing = _rebuildLandingTo(snap.board.dropIndex);
       if (snap.completed || snap.board.status != GameStatus.playing) {
         // Once-per-tier-per-day: a completed tier is locked, show the result.
@@ -165,6 +179,7 @@ class GameCubit extends Cubit<GameState> {
 
     // Fresh day for this tier.
     _landing = _seeder.landingPrng();
+    _dropTier = _seeder.dropTierPrng();
     await storage.saveSnapshot(GameSnapshot(
         date: _date,
         difficulty: difficulty,
@@ -204,14 +219,13 @@ class GameCubit extends Cubit<GameState> {
 
     var board = GameEngine.merge(s.board, fromIndex: fromIndex, toIndex: toIndex)
         .copyWith(moveLog: log);
-    if (board.dropIndex < _dropTiers.length) {
-      board = GameEngine.applyDrop(
-        board,
-        _dropTiers[board.dropIndex],
-        _landing,
-        golden: _goldenDrops.contains(board.dropIndex),
-      );
-    }
+    // Use the on-demand drop-tier stream (unbounded, no guard needed).
+    board = GameEngine.applyDrop(
+      board,
+      _seeder.dropTierAt(_dropTier, board.dropIndex),
+      _landing,
+      golden: _goldenDrops.contains(board.dropIndex),
+    );
     board = GameEngine.evaluateStatus(board);
 
     if (goldenBonus > 0) {
@@ -227,43 +241,135 @@ class GameCubit extends Cubit<GameState> {
         completed: done));
 
     if (done) {
-      final firstCompletionToday =
-          storage.loadStats(_difficulty).lastCompletedDate != _date;
-      final stats = await _recordCompletion(board);
-      // Flat completion reward (Phase 2), credited once per locked day via the
-      // wallet hook — never touches score. Tracked so it can be doubled.
-      if (firstCompletionToday && kCompletionCoinReward > 0) {
-        _coinsEarnedThisRun += kCompletionCoinReward;
-        await onCoinsEarned?.call(kCompletionCoinReward);
-      }
-      // Record the day's result in the append-only history (Phase 4), once per
-      // locked tier-day (same guard as the stats fold). The run is now locked,
-      // so clear the rewindable history too.
-      if (firstCompletionToday) {
-        await storage.appendResult(DayResult(
-          date: _date,
-          difficulty: _difficulty,
-          score: board.score,
-          highestTier: board.highestTier,
-          // Factual end state (not a win/loss): out-of-moves vs deadlocked.
-          endedOutOfMoves: board.status == GameStatus.outOfMoves,
-        ));
-      }
-      _undoStack.clear();
-      await _fireCompletionHook(board);
-      emit(GameOverShowScore(
-          board: board, date: _date, difficulty: _difficulty, stats: stats));
-      // Submit to the leaderboard only when the day is genuinely terminal:
-      // deadlocked, or out of moves with no remaining ad-continue offer. This
-      // avoids submitting before the player takes an available ad continue.
-      final terminal = board.status == GameStatus.deadlocked ||
-          board.adContinuesUsed >= kMaxAdContinuesPerDay ||
-          !GameEngine.hasMergeAvailable(board);
-      if (terminal) {
-        await _submit(board);
-      }
+      await _finishRun(board);
     } else {
       emit(GamePlaying(board: board, difficulty: _difficulty));
+    }
+  }
+
+  /// Play a Connect-Merge: validate [path], collapse it, refill the board to the
+  /// difficulty's starting fill, track the daily objective, then persist/emit.
+  /// Mirrors [merge]'s lifecycle (undo frame, golden bonus, completion hooks).
+  Future<void> playChain(List<int> path) async {
+    final s = state;
+    if (s is! GamePlaying) return;
+    if (!GameEngine.isValidChain(s.board, path)) return;
+
+    // Golden bonus: every golden tile consumed anywhere in the path pays out.
+    // Computed on the PRE-collapse board; never touches score/log.
+    var goldenBonus = 0;
+    for (final idx in path) {
+      if (s.board.cells[idx]?.golden ?? false) goldenBonus += kGoldenMergeBonus;
+    }
+
+    _undoStack.add(_UndoFrame(
+      board: s.board,
+      landingDraws: s.board.dropIndex,
+      coinsCredited: goldenBonus,
+    ));
+    if (_undoStack.length > kUndoStackDepth) _undoStack.removeAt(0);
+
+    final log = List<MoveEvent>.of(s.board.moveLog)..add(ChainEvent(path: path));
+
+    var board =
+        GameEngine.collapseChain(s.board, path).copyWith(moveLog: log);
+
+    // Refill to the difficulty's starting fill (a chain of N freed N-1 cells).
+    final targetFill = _difficulty.startingFill;
+    while (board.filledCount < targetFill && board.emptyIndices.isNotEmpty) {
+      final tier = _seeder.dropTierAt(_dropTier, board.dropIndex);
+      board = GameEngine.applyDrop(
+        board,
+        tier,
+        _landing,
+        golden: _goldenDrops.contains(board.dropIndex),
+      );
+    }
+
+    // Track the daily objective (monotonic; recomputable on replay).
+    final newProgress = _objective.progressAfter(
+      board.objectiveProgress,
+      chainLength: path.length,
+      highestTier: board.highestTier,
+    );
+    final justMet = !_objectiveMet &&
+        !_objective.isMet(board.objectiveProgress) &&
+        _objective.isMet(newProgress);
+    board = board.copyWith(objectiveProgress: newProgress);
+
+    board = GameEngine.evaluateStatus(board);
+
+    if (goldenBonus > 0) {
+      _coinsEarnedThisRun += goldenBonus;
+      await onCoinsEarned?.call(goldenBonus);
+    }
+    if (justMet) {
+      _objectiveMet = true;
+      _coinsEarnedThisRun += kObjectiveRewardCoins;
+      await onCoinsEarned?.call(kObjectiveRewardCoins);
+    }
+
+    final done = board.status != GameStatus.playing;
+    await storage.saveSnapshot(GameSnapshot(
+        date: _date,
+        difficulty: _difficulty,
+        board: board,
+        completed: done));
+
+    if (done) {
+      await _finishRun(board);
+    } else {
+      emit(GamePlaying(board: board, difficulty: _difficulty));
+    }
+  }
+
+  /// The next [count] drop tiers, peeked without consuming the live stream.
+  /// Returns fewer only at the theoretical schedule edge (never in practice —
+  /// the stream is unbounded). Powers the visible planning queue.
+  List<int> peekDropTiers([int count = kDropQueueVisible]) {
+    final s = state;
+    final dropIndex = s is GamePlaying ? s.board.dropIndex : 0;
+    final p = _rebuildDropTierTo(dropIndex);
+    return [for (var k = 0; k < count; k++) _seeder.dropTierAt(p, dropIndex + k)];
+  }
+
+  /// Shared completion tail: record stats, emit result screen, fire hooks.
+  /// Called by both [merge] and [playChain] when the run terminates.
+  Future<void> _finishRun(BoardState board) async {
+    final firstCompletionToday =
+        storage.loadStats(_difficulty).lastCompletedDate != _date;
+    final stats = await _recordCompletion(board);
+    // Flat completion reward (Phase 2), credited once per locked day via the
+    // wallet hook — never touches score. Tracked so it can be doubled.
+    if (firstCompletionToday && kCompletionCoinReward > 0) {
+      _coinsEarnedThisRun += kCompletionCoinReward;
+      await onCoinsEarned?.call(kCompletionCoinReward);
+    }
+    // Record the day's result in the append-only history (Phase 4), once per
+    // locked tier-day (same guard as the stats fold). The run is now locked,
+    // so clear the rewindable history too.
+    if (firstCompletionToday) {
+      await storage.appendResult(DayResult(
+        date: _date,
+        difficulty: _difficulty,
+        score: board.score,
+        highestTier: board.highestTier,
+        // Factual end state (not a win/loss): out-of-moves vs deadlocked.
+        endedOutOfMoves: board.status == GameStatus.outOfMoves,
+      ));
+    }
+    _undoStack.clear();
+    await _fireCompletionHook(board);
+    emit(GameOverShowScore(
+        board: board, date: _date, difficulty: _difficulty, stats: stats));
+    // Submit to the leaderboard only when the day is genuinely terminal:
+    // deadlocked, or out of moves with no remaining ad-continue offer. This
+    // avoids submitting before the player takes an available ad continue.
+    final terminal = board.status == GameStatus.deadlocked ||
+        board.adContinuesUsed >= kMaxAdContinuesPerDay ||
+        !GameEngine.hasMergeAvailable(board);
+    if (terminal) {
+      await _submit(board);
     }
   }
 
@@ -276,6 +382,16 @@ class GameCubit extends Cubit<GameState> {
     final p = _seeder.landingPrng();
     for (var i = 0; i < draws; i++) {
       p.nextU32();
+    }
+    return p;
+  }
+
+  /// Rebuild the drop-tier stream and advance it to [draws] taken (one draw per
+  /// applied drop), mirroring [_rebuildLandingTo]. Deterministic rewind.
+  Prng _rebuildDropTierTo(int draws) {
+    final p = _seeder.dropTierPrng();
+    for (var i = 0; i < draws; i++) {
+      _seeder.dropTierAt(p, i);
     }
     return p;
   }
@@ -304,7 +420,8 @@ class GameCubit extends Cubit<GameState> {
     await _applyUndo();
   }
 
-  /// Pop the most-recent frame and restore board + landing-PRNG together.
+  /// Pop the most-recent frame and restore board + landing-PRNG + drop-tier-PRNG
+  /// together.
   Future<void> _applyUndo() async {
     final frame = _undoStack.removeLast();
     // Refund any golden coins this merge credited, so merge→undo→re-merge can't
@@ -314,8 +431,10 @@ class GameCubit extends Cubit<GameState> {
       if (_coinsEarnedThisRun < 0) _coinsEarnedThisRun = 0;
       await onCoinsEarned?.call(-frame.coinsCredited);
     }
-    // Rewind stream B to the saved position (deterministic rebuild).
+    // Rewind stream B and drop-tier stream to the saved position (deterministic
+    // rebuild). Both streams must be rewound in lock-step to prevent PRNG desync.
     _landing = _rebuildLandingTo(frame.landingDraws);
+    _dropTier = _rebuildDropTierTo(frame.landingDraws);
     // Persist the restored (not-completed) board so a resume sees the rewind.
     await storage.saveSnapshot(GameSnapshot(
         date: _date,
@@ -328,22 +447,16 @@ class GameCubit extends Cubit<GameState> {
   /// Whether another rewarded hint may be shown today (per-tier-day cap).
   bool get canUseHint {
     final s = state;
-    return s is GamePlaying &&
-        _hintsUsed < kMaxHintsPerDay &&
-        s.board.dropIndex < _dropTiers.length;
+    return s is GamePlaying && _hintsUsed < kMaxHintsPerDay;
   }
 
-  /// The next drop tier the seed will deliver, or null if none remain.
-  /// READ-ONLY: derived purely from the seed-fixed [_dropTiers] schedule indexed
-  /// by the board's current `dropIndex`. It does NOT read or write board state
-  /// beyond `dropIndex`, and emits no new state — so it cannot affect the run or
-  /// leaderboard fairness. Returns null if the player has no live board.
+  /// The next drop tier the seed will deliver. READ-ONLY: peeked from the
+  /// on-demand stream without consuming it. Returns null if no live board.
   int? peekNextDropTier() {
     final s = state;
     if (s is! GamePlaying) return null;
-    final i = s.board.dropIndex;
-    if (i < 0 || i >= _dropTiers.length) return null;
-    return _dropTiers[i];
+    final tiers = peekDropTiers(1);
+    return tiers.isEmpty ? null : tiers.first;
   }
 
   /// Consume a rewarded-hint use and return the next drop tier. Call AFTER the

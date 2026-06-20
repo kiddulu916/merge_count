@@ -26,7 +26,7 @@ List<(int, int)?> _cellKeys(BoardState b) => b.cells.map(_cellKey).toList();
 BoardState replay(String date, Difficulty difficulty, List<MoveEvent> log) {
   final seeder = DailySeeder(date, difficulty);
   final start = seeder.generate();
-  final dropTiers = start.dropTiers;
+  final dropPrng = seeder.dropTierPrng();
   final landing = seeder.landingPrng();
   var board = start.board;
 
@@ -38,9 +38,9 @@ BoardState replay(String date, Difficulty difficulty, List<MoveEvent> log) {
       expect(GameEngine.canMerge(board, ev.from, ev.to), isTrue,
           reason: 'replay hit an illegal merge — moveLog drifted');
       board = GameEngine.merge(board, fromIndex: ev.from, toIndex: ev.to);
-      if (board.dropIndex < dropTiers.length) {
-        board = GameEngine.applyDrop(board, dropTiers[board.dropIndex], landing);
-      }
+      // Apply one drop unconditionally, mirroring the cubit's new on-demand stream.
+      board = GameEngine.applyDrop(
+          board, seeder.dropTierAt(dropPrng, board.dropIndex), landing);
       board = GameEngine.evaluateStatus(board);
     } else if (ev is ContinueEvent) {
       board = board.copyWith(
@@ -235,10 +235,37 @@ void main() {
     });
   });
 
+  test('undo after a chain restores board, score, and drop streams', () async {
+    final storage = InMemoryStorageService();
+    final cubit = GameCubit(storage: storage, todayProvider: () => '2026-06-20');
+    await cubit.init(difficulty: Difficulty.easy);
+    final before = (cubit.state as GamePlaying).board;
+
+    int? from, to;
+    for (var i = 0; i < kCellCount && from == null; i++) {
+      final t = before.cells[i];
+      if (t == null || t.tier >= kMaxTier) continue;
+      for (final n in [i + 1, i + kGridSize]) {
+        if (n >= kCellCount) continue;
+        if (n == i + 1 && (i % kGridSize) == kGridSize - 1) continue;
+        final u = before.cells[n];
+        if (u != null && u.tier == t.tier) { from = i; to = n; break; }
+      }
+    }
+    await cubit.playChain([from!, to!]);
+    expect(cubit.canUndo, isTrue);
+    await cubit.undo();
+    final restored = (cubit.state as GamePlaying).board;
+    expect(restored.score, before.score);
+    expect(restored.movesRemaining, before.movesRemaining);
+    expect(restored.dropIndex, before.dropIndex);
+  });
+
   group('UNDO gating + bounds', () {
     test('free undo cap: exactly kFreeUndosPerDay free undos, then no-op',
         () async {
-      const date = '2026-06-02';
+      // Date chosen to give enough merges with the on-demand drop-tier stream.
+      const date = '2026-07-02';
       final c = make(date);
       await c.init(difficulty: Difficulty.medium);
 
@@ -266,7 +293,8 @@ void main() {
     });
 
     test('rewarded undo grants exactly one extra past the free cap', () async {
-      const date = '2026-06-02';
+      // Date chosen to give enough merges with the on-demand drop-tier stream.
+      const date = '2026-07-02';
       final c = make(date);
       await c.init(difficulty: Difficulty.medium);
 
@@ -298,7 +326,8 @@ void main() {
     });
 
     test('undo stack is bounded at kUndoStackDepth', () async {
-      const date = '2026-06-02';
+      // Date chosen to give enough merges with the on-demand drop-tier stream.
+      const date = '2026-07-02';
       final c = make(date);
       await c.init(difficulty: Difficulty.medium);
 
