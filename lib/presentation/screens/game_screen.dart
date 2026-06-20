@@ -14,8 +14,10 @@ import '../../infrastructure/ad_service.dart';
 import '../../infrastructure/notification_service.dart';
 import '../widgets/banner_slot.dart';
 import '../widgets/board_widget.dart';
+import '../widgets/drop_queue_rail.dart';
 import '../widgets/hint_button.dart';
 import '../widgets/moves_counter.dart';
+import '../widgets/objective_banner.dart';
 import '../widgets/rewarded_dialog.dart';
 import '../widgets/streak_banner.dart';
 import 'score_share_screen.dart';
@@ -246,6 +248,9 @@ class _GameScreenState extends State<GameScreen> {
                   letterSpacing: 2,
                   fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
+          ObjectiveBanner(
+              objective: cubit.objective, progress: board.objectiveProgress),
+          const SizedBox(height: 8),
           MovesCounter(
               movesRemaining: board.movesRemaining, score: board.score),
           const SizedBox(height: 12),
@@ -290,6 +295,8 @@ class _GameScreenState extends State<GameScreen> {
               ),
             ),
           ),
+          const SizedBox(height: 12),
+          DropQueueRail(tiers: cubit.peekDropTiers(), cosmetic: _cosmetic),
         ],
       ),
     );
