@@ -285,8 +285,7 @@ class _GameScreenState extends State<GameScreen> {
                   board: board,
                   cosmetic: _cosmetic,
                   colorblindMode: _colorblind,
-                  onMerge: (from, to) =>
-                      cubit.merge(fromIndex: from, toIndex: to),
+                  onChain: (path) => cubit.playChain(path),
                 ),
               ),
             ),

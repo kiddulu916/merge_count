@@ -7,7 +7,7 @@ import 'package:merge_count/domain/models/tile.dart';
 import 'package:merge_count/presentation/widgets/board_widget.dart';
 
 void main() {
-  testWidgets('reports a merge when a tile is dragged onto a matching tile', (tester) async {
+  testWidgets('renders tiles on the board', (tester) async {
     final cells = List<Tile?>.filled(kCellCount, null);
     cells[0] = const Tile(id: 1, tier: 2);
     cells[1] = const Tile(id: 2, tier: 2);
@@ -22,29 +22,66 @@ void main() {
       status: GameStatus.playing,
     );
 
-    int? gotFrom, gotTo;
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: BoardWidget(
           board: board,
-          onMerge: (from, to) {
-            gotFrom = from;
-            gotTo = to;
-          },
+          onChain: (_) {},
         ),
       ),
     ));
 
+    // Tier 2 tiles display as "4" (2^2).
     expect(find.text('4'), findsNWidgets(2));
+  });
 
-    final gesture = await tester.startGesture(tester.getCenter(find.text('4').first));
-    await tester.pump(const Duration(milliseconds: 100));
-    await gesture.moveTo(tester.getCenter(find.text('4').last));
-    await tester.pump(const Duration(milliseconds: 100));
-    await gesture.up();
-    await tester.pumpAndSettle();
+  testWidgets('dragging across two adjacent equal tiles reports a 2-path',
+      (tester) async {
+    final cells = List<Tile?>.filled(kCellCount, null);
+    cells[0] = const Tile(id: 1, tier: 2);
+    cells[1] = const Tile(id: 2, tier: 2); // east neighbour, same tier
+    final board = BoardState(
+      cells: cells,
+      movesRemaining: 30,
+      score: 0,
+      nextTileId: 3,
+      dropIndex: 0,
+      adContinuesUsed: 0,
+      movesMade: 0,
+      status: GameStatus.playing,
+    );
 
-    expect(gotFrom, 0);
-    expect(gotTo, 1);
+    List<int>? reported;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: SizedBox(
+            width: 350,
+            height: 350,
+            child: BoardWidget(board: board, onChain: (p) => reported = p),
+          ),
+        ),
+      ),
+    ));
+
+    // Drag from the center of cell 0 to the center of cell 1.
+    final box = tester.getRect(find.byType(BoardWidget));
+    const gap = 8.0;
+    final cell = (box.width - gap * (kGridSize + 1)) / kGridSize;
+    Offset centerOf(int i) {
+      final row = i ~/ kGridSize, col = i % kGridSize;
+      return box.topLeft +
+          Offset(gap + col * (cell + gap) + cell / 2,
+              gap + row * (cell + gap) + cell / 2);
+    }
+
+    final g = await tester.startGesture(centerOf(0));
+    await tester.pump();
+    await g.moveTo(centerOf(1));
+    await tester.pump();
+    await g.up();
+    await tester.pump();
+
+    expect(reported, [0, 1]);
   });
 }

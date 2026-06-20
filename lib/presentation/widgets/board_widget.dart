@@ -2,19 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../domain/constants.dart';
+import '../../domain/engine/game_engine.dart';
 import '../../domain/models/board_state.dart';
 import '../../domain/models/cosmetic.dart';
-import '../../domain/models/tile.dart';
-import '../theme/tile_palette.dart';
 import 'grid_cell_widget.dart';
 
 /// Renders the 5×5 board as a static slot grid with live tiles floating above
 /// as AnimatedPositioned widgets keyed by tile id, so merges slide and drops
-/// fall smoothly. Drag a tile onto a matching tile to merge; [onMerge] is
-/// invoked with (fromIndex, toIndex).
-class BoardWidget extends StatelessWidget {
+/// fall smoothly. Draw a connected path across matching tiles to chain-merge;
+/// [onChain] is invoked with the ordered list of cell indices when the gesture
+/// ends with a valid path (length >= 2).
+class BoardWidget extends StatefulWidget {
   final BoardState board;
-  final void Function(int fromIndex, int toIndex) onMerge;
+  final void Function(List<int> path) onChain;
 
   /// Selected tile theme. Defaults to classic.
   final Cosmetic cosmetic;
@@ -25,17 +25,68 @@ class BoardWidget extends StatelessWidget {
   const BoardWidget({
     super.key,
     required this.board,
-    required this.onMerge,
+    required this.onChain,
     this.cosmetic = Cosmetic.classic,
     this.colorblindMode = false,
   });
 
-  bool _isMergeable(int fromIndex, int toIndex) {
-    if (fromIndex == toIndex) return false;
-    final from = board.cells[fromIndex];
-    final to = board.cells[toIndex];
-    if (from == null || to == null) return false;
-    return from.tier == to.tier && from.tier < kMaxTier;
+  @override
+  State<BoardWidget> createState() => _BoardWidgetState();
+}
+
+class _BoardWidgetState extends State<BoardWidget> {
+  final List<int> _path = [];
+  double _cell = 0;
+  double _gap = 8;
+
+  int? _cellAt(Offset local) {
+    final step = _cell + _gap;
+    for (var i = 0; i < kCellCount; i++) {
+      final row = i ~/ kGridSize, col = i % kGridSize;
+      final rect = Rect.fromLTWH(
+          _gap + col * step, _gap + row * step, _cell, _cell);
+      if (rect.contains(local)) return i;
+    }
+    return null;
+  }
+
+  bool _canExtend(int idx) {
+    if (widget.board.walls.contains(idx)) return false;
+    final t = widget.board.cells[idx];
+    if (t == null || t.tier >= kMaxTier) return false;
+    if (_path.isEmpty) return true;
+    if (_path.contains(idx)) return false;
+    final headTier = widget.board.cells[_path.first]!.tier;
+    if (t.tier != headTier) return false;
+    return GameEngine.areOrthogonallyAdjacent(_path.last, idx);
+  }
+
+  void _onStart(Offset local) {
+    final idx = _cellAt(local);
+    if (idx != null && _canExtend(idx)) {
+      setState(() => _path
+        ..clear()
+        ..add(idx));
+    }
+  }
+
+  void _onUpdate(Offset local) {
+    final idx = _cellAt(local);
+    if (idx == null) return;
+    // Backtrack: dragging onto the previous cell un-picks the last.
+    if (_path.length >= 2 && idx == _path[_path.length - 2]) {
+      setState(() => _path.removeLast());
+      return;
+    }
+    if (_canExtend(idx)) setState(() => _path.add(idx));
+  }
+
+  void _onEnd() {
+    if (_path.length >= 2) {
+      HapticFeedback.mediumImpact();
+      widget.onChain(List<int>.of(_path));
+    }
+    setState(() => _path.clear());
   }
 
   @override
@@ -46,6 +97,10 @@ class BoardWidget extends StatelessWidget {
         final boardSize = constraints.maxWidth;
         final cell = (boardSize - gap * (kGridSize + 1)) / kGridSize;
 
+        // Store for hit-testing in gesture callbacks.
+        _gap = gap;
+        _cell = cell;
+
         Offset offsetFor(int index) {
           final row = index ~/ kGridSize;
           final col = index % kGridSize;
@@ -54,21 +109,35 @@ class BoardWidget extends StatelessWidget {
 
         final children = <Widget>[];
 
-        // Static backing slots.
+        // Backing slots: render walls distinctly.
         for (var i = 0; i < kCellCount; i++) {
           final pos = offsetFor(i);
+          final isWall = widget.board.walls.contains(i);
           children.add(Positioned(
             left: pos.dx,
             top: pos.dy,
-            child: GridCellWidget(tile: null, size: cell, cosmetic: cosmetic),
+            child: isWall
+                ? Container(
+                    width: cell,
+                    height: cell,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF3A3F52),
+                      borderRadius: BorderRadius.circular(cell * 0.16),
+                    ),
+                    child: const Icon(Icons.block, color: Colors.white24),
+                  )
+                : GridCellWidget(
+                    tile: null, size: cell, cosmetic: widget.cosmetic),
           ));
         }
 
-        // Floating live tiles (visuals + drag source), keyed by id.
+        // Floating live tiles keyed by id (for AnimatedPositioned animations).
+        // Cells in the current path get a glow highlight.
         for (var i = 0; i < kCellCount; i++) {
-          final tile = board.cells[i];
+          final tile = widget.board.cells[i];
           if (tile == null) continue;
           final pos = offsetFor(i);
+          final inPath = _path.contains(i);
           children.add(AnimatedPositioned(
             key: ValueKey(tile.id),
             duration: const Duration(milliseconds: 160),
@@ -77,93 +146,51 @@ class BoardWidget extends StatelessWidget {
             top: pos.dy,
             width: cell,
             height: cell,
-            child: _DraggableTile(
-                index: i,
-                tile: tile,
-                size: cell,
-                cosmetic: cosmetic,
-                colorblindMode: colorblindMode),
+            child: inPath
+                ? DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(cell * 0.16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.white.withValues(alpha: 0.45),
+                          blurRadius: cell * 0.25,
+                          spreadRadius: cell * 0.06,
+                        ),
+                      ],
+                    ),
+                    child: GridCellWidget(
+                      tile: tile,
+                      size: cell,
+                      cosmetic: widget.cosmetic,
+                      colorblindMode: widget.colorblindMode,
+                    ),
+                  )
+                : GridCellWidget(
+                    tile: tile,
+                    size: cell,
+                    cosmetic: widget.cosmetic,
+                    colorblindMode: widget.colorblindMode,
+                  ),
           ));
         }
 
-        // Drop targets as the TOP layer (translucent) so they reliably receive
-        // drops while pointers still pass through to the draggable tiles below.
-        for (var i = 0; i < kCellCount; i++) {
-          final pos = offsetFor(i);
-          children.add(Positioned(
-            left: pos.dx,
-            top: pos.dy,
-            width: cell,
-            height: cell,
-            child: DragTarget<int>(
-              hitTestBehavior: HitTestBehavior.translucent,
-              onWillAcceptWithDetails: (d) => _isMergeable(d.data, i),
-              onAcceptWithDetails: (d) {
-                HapticFeedback.mediumImpact();
-                onMerge(d.data, i);
-              },
-              builder: (context, _, __) => const SizedBox.expand(),
+        return GestureDetector(
+          onPanStart: (d) => _onStart(d.localPosition),
+          onPanUpdate: (d) => _onUpdate(d.localPosition),
+          onPanEnd: (_) => _onEnd(),
+          child: SizedBox(
+            width: boardSize,
+            height: boardSize,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E2230),
+                borderRadius: BorderRadius.circular(gap * 1.5),
+              ),
+              child: Stack(children: children),
             ),
-          ));
-        }
-
-        return SizedBox(
-          width: boardSize,
-          height: boardSize,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E2230),
-              borderRadius: BorderRadius.circular(gap * 1.5),
-            ),
-            child: Stack(children: children),
           ),
         );
       },
-    );
-  }
-}
-
-class _DraggableTile extends StatelessWidget {
-  final int index;
-  final Tile tile;
-  final double size;
-  final Cosmetic cosmetic;
-  final bool colorblindMode;
-
-  const _DraggableTile({
-    required this.index,
-    required this.tile,
-    required this.size,
-    required this.cosmetic,
-    this.colorblindMode = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final face = GridCellWidget(
-        tile: tile,
-        size: size,
-        cosmetic: cosmetic,
-        colorblindMode: colorblindMode);
-    // The feedback intentionally omits the text label so that find.text()
-    // in tests (and in the gesture pipeline) does not find a third instance
-    // of the tile value floating in the overlay during a drag gesture.
-    final feedbackFace = Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: TilePalette.colorFor(cosmetic, tile.tier),
-        borderRadius: BorderRadius.circular(size * 0.16),
-      ),
-    );
-    return Draggable<int>(
-      data: index,
-      feedback: Material(
-        color: Colors.transparent,
-        child: Transform.scale(scale: 1.1, child: feedbackFace),
-      ),
-      childWhenDragging: Opacity(opacity: 0.25, child: face),
-      child: face,
     );
   }
 }

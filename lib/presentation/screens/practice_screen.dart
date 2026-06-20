@@ -63,13 +63,16 @@ class _PracticeScreenState extends State<PracticeScreen> {
     });
   }
 
-  void _merge(int fromIndex, int toIndex) {
+  void _playChain(List<int> path) {
     if (_board.status != GameStatus.playing) return;
-    if (!GameEngine.canMerge(_board, fromIndex, toIndex)) return;
+    if (!GameEngine.isValidChain(_board, path)) return;
 
-    var board =
-        GameEngine.merge(_board, fromIndex: fromIndex, toIndex: toIndex);
-    if (board.dropIndex < _dropTiers.length) {
+    var board = GameEngine.collapseChain(_board, path);
+    // Refill toward the difficulty's starting fill using the practice drop list.
+    // The index guard prevents overrunning the fixed list; when exhausted we stop.
+    while (board.filledCount < widget.difficulty.startingFill &&
+        board.emptyIndices.isNotEmpty &&
+        board.dropIndex < _dropTiers.length) {
       board = GameEngine.applyDrop(board, _dropTiers[board.dropIndex], _landing);
     }
     board = GameEngine.evaluateStatus(board);
@@ -113,7 +116,7 @@ class _PracticeScreenState extends State<PracticeScreen> {
                           aspectRatio: 1,
                           child: BoardWidget(
                             board: _board,
-                            onMerge: _merge,
+                            onChain: _playChain,
                             cosmetic: widget.cosmetic,
                           ),
                         ),
