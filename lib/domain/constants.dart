@@ -1,6 +1,8 @@
 /// Tunable game constants — the single source of truth for game feel.
 library;
 
+import 'models/difficulty.dart';
+
 /// Board is a fixed kGridSize × kGridSize matrix.
 const int kGridSize = 5;
 const int kCellCount = kGridSize * kGridSize; // 25
@@ -116,3 +118,39 @@ int dropCap(int n) {
   final c = 2 + (n ~/ 6);
   return c > 6 ? 6 : c;
 }
+
+/// Connect-Merge — superlinear combo multiplier for a chain of [n] tiles.
+/// `n == 2` returns 1 so the minimal collapse scores exactly `2^(tier+1)`,
+/// identical to the legacy pairwise merge. Formula: 1 + (n-2)(n-1)/2.
+/// Pure tuning knob — adjust the curve here only.
+int comboMultiplier(int n) {
+  if (n < 2) return 0;
+  return 1 + ((n - 2) * (n - 1)) ~/ 2;
+}
+
+/// Number of the next drop tiers shown openly in the planning queue.
+const int kDropQueueVisible = 3;
+
+/// How many drops ahead the rewarded ad-hint reveals (beyond the free queue).
+const int kAdHintLookahead = 3;
+
+/// Flat coin reward for completing the daily objective (client-side wallet
+/// only — never touches score). Tuning knob.
+const int kObjectiveRewardCoins = 25;
+
+/// Bumped when the persisted snapshot schema changes. An in-progress snapshot
+/// whose version != this is discarded on load (a daily resets anyway).
+const int kSnapshotVersion = 2;
+
+/// Bumped at the Connect-Merge relaunch. Submitted with every score and used to
+/// filter leaderboard reads, so pre-relaunch scores never appear (hard reset).
+const int kLeaderboardSeason = 2;
+
+/// Seed-placed wall cells per difficulty (block tiles, break paths). Easy has
+/// none; tighter boards get more. Tuning knob.
+int wallCountFor(Difficulty d) => switch (d) {
+      Difficulty.easy => 0,
+      Difficulty.medium => 2,
+      Difficulty.hard => 3,
+      Difficulty.legendary => 4,
+    };
