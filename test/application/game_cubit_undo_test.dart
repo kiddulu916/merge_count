@@ -95,7 +95,7 @@ void main() {
 
   group('UNDO INVARIANT: run stays replay-consistent', () {
     test('undo rewinds board, dropIndex, and moveLog together', () async {
-      const date = '2026-06-07';
+      const date = '2026-06-01';
       const diff = Difficulty.medium;
       final c = make(date);
       await c.init(difficulty: diff);
@@ -238,7 +238,7 @@ void main() {
   group('UNDO gating + bounds', () {
     test('free undo cap: exactly kFreeUndosPerDay free undos, then no-op',
         () async {
-      const date = '2026-06-07';
+      const date = '2026-06-02';
       final c = make(date);
       await c.init(difficulty: Difficulty.medium);
 
@@ -266,7 +266,7 @@ void main() {
     });
 
     test('rewarded undo grants exactly one extra past the free cap', () async {
-      const date = '2026-06-07';
+      const date = '2026-06-02';
       final c = make(date);
       await c.init(difficulty: Difficulty.medium);
 
@@ -287,7 +287,7 @@ void main() {
     });
 
     test('undo is a no-op with an empty stack', () async {
-      const date = '2026-06-07';
+      const date = '2026-06-02';
       final c = make(date);
       await c.init(difficulty: Difficulty.medium);
       expect(c.canUndo, isFalse);
@@ -298,7 +298,7 @@ void main() {
     });
 
     test('undo stack is bounded at kUndoStackDepth', () async {
-      const date = '2026-06-07';
+      const date = '2026-06-02';
       final c = make(date);
       await c.init(difficulty: Difficulty.medium);
 
