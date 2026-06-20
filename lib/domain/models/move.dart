@@ -17,6 +17,10 @@ sealed class MoveEvent {
         return MergeEvent(from: j['from'] as int, to: j['to'] as int);
       case ContinueEvent.type:
         return const ContinueEvent();
+      case ChainEvent.type:
+        return ChainEvent(
+          path: (j['path'] as List).map((e) => e as int).toList(),
+        );
       default:
         throw ArgumentError('Unknown MoveEvent type: $type');
     }
@@ -44,6 +48,41 @@ class MergeEvent extends MoveEvent {
 
   @override
   String toString() => 'MergeEvent(from: $from, to: $to)';
+}
+
+/// An accepted Connect-Merge collapse: an ordered run of orthogonally-adjacent
+/// same-tier cells, collapsed onto the LAST cell (the release endpoint). A
+/// 2-element path is exactly the legacy pairwise merge. This is the authoritative
+/// replay input; the server re-validates the path geometry against the seeded
+/// board, so a forged path is rejected.
+class ChainEvent extends MoveEvent {
+  static const type = 'chain';
+
+  final List<int> path;
+
+  const ChainEvent({required this.path});
+
+  @override
+  Map<String, dynamic> toJson() => {'type': type, 'path': path};
+
+  @override
+  bool operator ==(Object other) =>
+      other is ChainEvent &&
+      other.path.length == path.length &&
+      _eq(other.path, path);
+
+  static bool _eq(List<int> a, List<int> b) {
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => Object.hashAll(path);
+
+  @override
+  String toString() => 'ChainEvent(path: $path)';
 }
 
 /// An ad-continue was granted (+kAdMoveReward moves).

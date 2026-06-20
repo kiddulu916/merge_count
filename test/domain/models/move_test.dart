@@ -43,4 +43,19 @@ void main() {
   test('unknown type throws', () {
     expect(() => MoveEvent.fromJson({'type': 'bogus'}), throwsArgumentError);
   });
+
+  test('ChainEvent round-trips through json and preserves order', () {
+    const e = ChainEvent(path: [0, 1, 6, 11]);
+    final decoded = MoveEvent.fromJson(e.toJson());
+    expect(decoded, isA<ChainEvent>());
+    expect(decoded, e);
+    expect((decoded as ChainEvent).path, [0, 1, 6, 11]);
+  });
+
+  test('ChainEvent equality is order-sensitive', () {
+    expect(const ChainEvent(path: [0, 1, 2]) == const ChainEvent(path: [0, 1, 2]),
+        isTrue);
+    expect(const ChainEvent(path: [0, 1, 2]) == const ChainEvent(path: [2, 1, 0]),
+        isFalse);
+  });
 }
