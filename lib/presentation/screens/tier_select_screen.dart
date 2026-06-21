@@ -450,50 +450,40 @@ class _TierSelectScreenState extends State<TierSelectScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 8),
-              Stack(
-                alignment: Alignment.center,
+              const Text('Merge Count',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 32,
+                      fontWeight: FontWeight.w900)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  const Text('Merge Count',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 32,
-                          fontWeight: FontWeight.w900)),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          key: const Key('open-achievements'),
-                          tooltip: 'Achievements',
-                          icon: const Icon(Icons.emoji_events,
-                              color: Colors.white70),
-                          onPressed: () => _openAchievements(context),
-                        ),
-                        IconButton(
-                          key: const Key('open-cosmetics'),
-                          tooltip: 'Tile themes',
-                          icon: const Icon(Icons.palette, color: Colors.white70),
-                          onPressed: () => _openCosmetics(context),
-                        ),
-                        IconButton(
-                          key: const Key('open-almanac'),
-                          tooltip: 'Merge Almanac',
-                          icon: const Icon(Icons.menu_book,
-                              color: Colors.white70),
-                          onPressed: () => _openAlmanac(context),
-                        ),
-                        if (widget.friends != null)
-                          IconButton(
-                            key: const Key('open-friends'),
-                            tooltip: 'Friends',
-                            icon: const Icon(Icons.group, color: Colors.white70),
-                            onPressed: () => _openFriends(context),
-                          ),
-                      ],
-                    ),
+                  IconButton(
+                    key: const Key('open-achievements'),
+                    tooltip: 'Achievements',
+                    icon: const Icon(Icons.emoji_events, color: Colors.white70),
+                    onPressed: () => _openAchievements(context),
                   ),
+                  IconButton(
+                    key: const Key('open-cosmetics'),
+                    tooltip: 'Tile themes',
+                    icon: const Icon(Icons.palette, color: Colors.white70),
+                    onPressed: () => _openCosmetics(context),
+                  ),
+                  IconButton(
+                    key: const Key('open-almanac'),
+                    tooltip: 'Merge Almanac',
+                    icon: const Icon(Icons.menu_book, color: Colors.white70),
+                    onPressed: () => _openAlmanac(context),
+                  ),
+                  if (widget.friends != null)
+                    IconButton(
+                      key: const Key('open-friends'),
+                      tooltip: 'Friends',
+                      icon: const Icon(Icons.group, color: Colors.white70),
+                      onPressed: () => _openFriends(context),
+                    ),
                 ],
               ),
               const SizedBox(height: 8),

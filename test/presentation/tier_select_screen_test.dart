@@ -23,8 +23,13 @@ void main() {
       ),
     ));
 
+    // The tier list is a scrollable ListView, so a lower tier may start below
+    // the fold; scroll each card into view before asserting on it.
+    final tierList = find.byType(Scrollable).last;
     for (final d in Difficulty.values) {
-      expect(find.byKey(Key('tier-${d.name}')), findsOneWidget);
+      final card = find.byKey(Key('tier-${d.name}'));
+      await tester.scrollUntilVisible(card, 100, scrollable: tierList);
+      expect(card, findsOneWidget);
       expect(find.text(d.label), findsOneWidget);
       expect(find.text('${d.startingFill} starting tiles'), findsOneWidget);
     }
