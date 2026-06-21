@@ -1,17 +1,20 @@
 # Phase 2 Server — Connect-Merge Replay Engine
 
-**Status: code-complete (client + server). Only live DB migration + function
-deploy remain.**
+**Status: ✅ LIVE. Client wired, server ported, migration applied, function
+deployed — all verified.**
 
-`onSubmitRun` is now **wired** in `TierSelectScreen` (online only), so completed
-runs will POST their move log. The server engine is **ported to Connect-Merge**
-and the **Deno parity tests pass (19/19)**.
+Online daily submission is fully operational on project `nnoqqchqprfikhabrrjt`
+("Connect Merge"):
+- `onSubmitRun` wired in `TierSelectScreen` (online only).
+- Server engine ported to Connect-Merge; Deno parity tests pass (19/19).
+- Migration `0006` applied — `scores.season` column present, and the three read
+  RPCs (`leaderboard`, `friends_leaderboard`, `leaderboard_period`) recreated
+  with a `p_season` filter (old signatures dropped). Verified via `pg_proc`.
+- `submit-score` Edge Function deployed with the Connect-Merge engine + season
+  stamping.
 
-⚠️ **Until you apply the migration and deploy the Edge Function (below), live
-submissions are INERT**: the currently-deployed (pre-redesign) `submit-score`
-will reject `ChainEvent` runs with 422. The client treats submission as
-best-effort and swallows the error, so nothing crashes — but no scores are
-recorded until the deploy. Do the two steps below to make it live.
+The leaderboard hard reset is in effect: pre-relaunch (season 1) rows are
+filtered out; new runs are recorded under season 2 (`kLeaderboardSeason`).
 
 ---
 
@@ -47,8 +50,9 @@ so they are intentionally NOT ported to the server.
 
 ---
 
-## Remaining operational steps (to make live submission work)
+## Operational steps — ALL DONE
 
+These have been run and verified; kept here as the runbook for future seasons.
 Run from the repo root.
 
 1. **Deno parity tests — ALREADY PASSING (19/19).** The cross-language
@@ -84,11 +88,10 @@ Run from the repo root.
 |------|-------|
 | `onSubmitRun` wired in `TierSelectScreen` | ✅ Wired (online only); runs POST their move log |
 | Server engine ported to Connect-Merge | ✅ Verified — Deno parity tests pass 19/19 |
-| Edge Function deployed | ⏳ Pending `supabase functions deploy submit-score` |
-| `season` migration applied to live DB | ⏳ Pending `supabase db push` |
+| Edge Function deployed | ✅ Deployed (`submit-score`, project `nnoqqchqprfikhabrrjt`) |
+| `season` migration applied to live DB | ✅ Applied — `scores.season` + season-filtered RPCs verified |
 
-Live submission starts working once the two ⏳ items are deployed. Until then,
-submissions are sent but rejected by the old function (swallowed, no crash).
+Online submission is live. Pre-relaunch scores are filtered out by season.
 
 ---
 
