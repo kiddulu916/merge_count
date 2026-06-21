@@ -19,6 +19,7 @@ import '../../infrastructure/leaderboard_service.dart';
 import '../../infrastructure/notification_service.dart';
 import '../../infrastructure/storage_service.dart';
 import '../theme/tile_palette.dart';
+import '../theme/tokens.dart';
 import '../widgets/coin_balance.dart';
 import '../widgets/duel_banner.dart';
 import '../widgets/rival_indicator.dart';
@@ -461,54 +462,87 @@ class _TierSelectScreenState extends State<TierSelectScreen> {
     );
   }
 
+  /// A compact secondary-nav icon button for the top app bar. Tighter than the
+  /// default 48px target (22px glyph, 40px hit area, no padding) so up to four
+  /// fit alongside the title without forcing it to wrap.
+  Widget _navIconButton({
+    required Key iconKey,
+    required String tooltip,
+    required IconData icon,
+    required VoidCallback onPressed,
+  }) {
+    return IconButton(
+      key: iconKey,
+      tooltip: tooltip,
+      icon: Icon(icon, color: AppColors.textSecondary),
+      iconSize: 22,
+      onPressed: onPressed,
+      style: IconButton.styleFrom(
+        minimumSize: const Size(40, 40),
+        padding: EdgeInsets.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF12141C),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(AppSpacing.xl),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 8),
-              const Text('Merge Count',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 32,
-                      fontWeight: FontWeight.w900)),
+              // Top app bar: title left, secondary-nav icons right. The title
+              // uses FittedBox(scaleDown) so it always stays on ONE line —
+              // shrinking only if the (up to 4) compact action icons leave it
+              // too little room — and never wraps.
               Row(
-                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  IconButton(
-                    key: const Key('open-achievements'),
+                  const Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text('Connect Merge',
+                          maxLines: 1,
+                          softWrap: false,
+                          style: TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 26,
+                              fontWeight: FontWeight.w900)),
+                    ),
+                  ),
+                  _navIconButton(
+                    iconKey: const Key('open-achievements'),
                     tooltip: 'Achievements',
-                    icon: const Icon(Icons.emoji_events, color: Colors.white70),
+                    icon: Icons.emoji_events,
                     onPressed: () => _openAchievements(context),
                   ),
-                  IconButton(
-                    key: const Key('open-cosmetics'),
+                  _navIconButton(
+                    iconKey: const Key('open-cosmetics'),
                     tooltip: 'Tile themes',
-                    icon: const Icon(Icons.palette, color: Colors.white70),
+                    icon: Icons.palette,
                     onPressed: () => _openCosmetics(context),
                   ),
-                  IconButton(
-                    key: const Key('open-almanac'),
+                  _navIconButton(
+                    iconKey: const Key('open-almanac'),
                     tooltip: 'Merge Almanac',
-                    icon: const Icon(Icons.menu_book, color: Colors.white70),
+                    icon: Icons.menu_book,
                     onPressed: () => _openAlmanac(context),
                   ),
                   if (widget.friends != null)
-                    IconButton(
-                      key: const Key('open-friends'),
+                    _navIconButton(
+                      iconKey: const Key('open-friends'),
                       tooltip: 'Friends',
-                      icon: const Icon(Icons.group, color: Colors.white70),
+                      icon: Icons.group,
                       onPressed: () => _openFriends(context),
                     ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.sm),
               BlocBuilder<EngagementCubit, EngagementState>(
                 bloc: _engagement,
                 builder: (context, eng) {
@@ -556,19 +590,45 @@ class _TierSelectScreenState extends State<TierSelectScreen> {
                   );
                 },
               ),
-              const SizedBox(height: 4),
-              const Text('Choose your daily challenge',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white54, fontSize: 14)),
-              const SizedBox(height: 8),
-              Text('Resets in ${_fmt(_untilReset)} (UTC)',
-                  key: const Key('reset-countdown'),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      color: Colors.white38,
-                      fontSize: 12,
-                      letterSpacing: 1)),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.xs),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text('Choose your daily challenge',
+                        style: TextStyle(
+                            color: AppColors.textMuted, fontSize: 14)),
+                  ),
+                  Tooltip(
+                    message: 'Resets at 00:00 UTC',
+                    child: Container(
+                      key: const Key('reset-countdown'),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.md, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.accent.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(AppRadii.pill),
+                        border: Border.all(
+                            color: AppColors.accent.withValues(alpha: 0.35)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.timer_outlined,
+                              size: 14, color: AppColors.accent),
+                          const SizedBox(width: 6),
+                          Text('Resets in ${_fmt(_untilReset)}',
+                              style: const TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  fontFeatures: [FontFeature.tabularFigures()])),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.md),
               BlocBuilder<LootCubit, LootState>(
                 bloc: _loot,
                 builder: (context, loot) {
@@ -584,17 +644,17 @@ class _TierSelectScreenState extends State<TierSelectScreen> {
                               ready ? 'Daily chest' : 'Chest claimed',
                               overflow: TextOverflow.ellipsis),
                           style: FilledButton.styleFrom(
-                            backgroundColor: ready
-                                ? Colors.amber.shade700
-                                : const Color(0xFF1B1E2A),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            backgroundColor:
+                                ready ? AppColors.accent : AppColors.surface,
+                            foregroundColor: AppColors.textPrimary,
+                            padding: const EdgeInsets.symmetric(
+                                vertical: AppSpacing.md),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: AppSpacing.sm),
                       CoinBalance(coins: loot.coins),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: AppSpacing.sm),
                       Expanded(
                         child: OutlinedButton.icon(
                           key: const Key('open-leaderboard-menu'),
@@ -603,9 +663,10 @@ class _TierSelectScreenState extends State<TierSelectScreen> {
                           label: const Text('Leaderboard',
                               overflow: TextOverflow.ellipsis),
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.white,
-                            side: const BorderSide(color: Colors.white24),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            foregroundColor: AppColors.textPrimary,
+                            side: const BorderSide(color: AppColors.border),
+                            padding: const EdgeInsets.symmetric(
+                                vertical: AppSpacing.md),
                           ),
                         ),
                       ),
@@ -613,7 +674,7 @@ class _TierSelectScreenState extends State<TierSelectScreen> {
                   );
                 },
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.lg),
               if (widget.duels != null)
                 BlocBuilder<DuelCubit, DuelState>(
                   bloc: _duelsCubit,
@@ -637,7 +698,24 @@ class _TierSelectScreenState extends State<TierSelectScreen> {
               Expanded(
                 child: ListView(
                   children: [
-                    for (final d in Difficulty.values) _tierCard(context, d),
+                    for (final d in Difficulty.values)
+                      Padding(
+                        padding:
+                            const EdgeInsets.only(bottom: AppSpacing.lg),
+                        child: _TierCard(
+                          difficulty: d,
+                          completed: _isCompleted(d),
+                          accent: TilePalette.colorForTier(d.startingFill),
+                          rank: Difficulty.values.indexOf(d),
+                          onTap: _isCompleted(d)
+                              ? null
+                              : () => _startTier(context, d),
+                          onPractice: () => _openPractice(context, d),
+                          onLeaderboard: widget.leaderboard == null
+                              ? null
+                              : () => _openLeaderboard(context, d),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -648,21 +726,97 @@ class _TierSelectScreenState extends State<TierSelectScreen> {
     );
   }
 
-  Widget _tierCard(BuildContext context, Difficulty d) {
-    final completed = _isCompleted(d);
-    // Use the tier's starting fill to pick a representative accent color.
-    final accent = TilePalette.colorForTier(d.startingFill);
+}
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+/// A single difficulty tier as a tappable "hero" card.
+///
+/// Stateful only to drive a subtle press-scale ([scale-feedback]); the InkWell
+/// still supplies the ripple and is the keyed tap target the tests drive. A
+/// completed card switches to a success-tinted outline + check badge and is
+/// non-interactive.
+class _TierCard extends StatefulWidget {
+  final Difficulty difficulty;
+  final bool completed;
+  final Color accent;
+
+  /// 0-based difficulty rank; drives the 1–4 pip indicator.
+  final int rank;
+
+  /// Tap handler. Null when the tier is already completed (card is inert).
+  final VoidCallback? onTap;
+  final VoidCallback onPractice;
+
+  /// Opens the per-tier leaderboard; null hides the icon (offline).
+  final VoidCallback? onLeaderboard;
+
+  const _TierCard({
+    required this.difficulty,
+    required this.completed,
+    required this.accent,
+    required this.rank,
+    required this.onTap,
+    required this.onPractice,
+    required this.onLeaderboard,
+  });
+
+  @override
+  State<_TierCard> createState() => _TierCardState();
+}
+
+class _TierCardState extends State<_TierCard> {
+  bool _pressed = false;
+
+  /// Compact trailing-action button (20px glyph, 36px hit area) so the practice
+  /// + per-tier leaderboard icons leave the label room to render in full.
+  Widget _cardIconButton({
+    required Key iconKey,
+    required String tooltip,
+    required IconData icon,
+    required VoidCallback onPressed,
+  }) {
+    return IconButton(
+      key: iconKey,
+      tooltip: tooltip,
+      icon: Icon(icon, color: AppColors.textMuted),
+      iconSize: 20,
+      onPressed: onPressed,
+      style: IconButton.styleFrom(
+        minimumSize: const Size(36, 36),
+        padding: EdgeInsets.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.compact,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final d = widget.difficulty;
+    final completed = widget.completed;
+    final accent = widget.accent;
+
+    return AnimatedScale(
+      scale: _pressed ? 0.97 : 1.0,
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOut,
       child: Material(
-        color: const Color(0xFF1B1E2A),
-        borderRadius: BorderRadius.circular(16),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadii.md),
         child: InkWell(
           key: Key('tier-${d.name}'),
-          borderRadius: BorderRadius.circular(16),
-          onTap: completed ? null : () => _startTier(context, d),
-          child: Padding(
+          borderRadius: BorderRadius.circular(AppRadii.md),
+          onTap: widget.onTap,
+          onHighlightChanged: (v) => setState(() => _pressed = v),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppRadii.md),
+              border: Border.all(
+                color: completed
+                    ? AppColors.success.withValues(alpha: 0.45)
+                    : accent.withValues(alpha: 0.35),
+                width: 1.5,
+              ),
+            ),
             padding: const EdgeInsets.all(20),
             child: Row(
               children: [
@@ -671,59 +825,133 @@ class _TierSelectScreenState extends State<TierSelectScreen> {
                   height: 48,
                   decoration: BoxDecoration(
                     color: accent.withValues(alpha: completed ? 0.3 : 1.0),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppRadii.sm),
                   ),
                   alignment: Alignment.center,
                   child: Text('${d.startingFill}',
                       style: const TextStyle(
-                          color: Colors.white,
+                          color: AppColors.textPrimary,
                           fontSize: 20,
                           fontWeight: FontWeight.w800)),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: AppSpacing.lg),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(d.label,
-                          style: TextStyle(
-                              color: completed ? Colors.white54 : Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800)),
-                      const SizedBox(height: 2),
-                      Text('${d.startingFill} starting tiles',
-                          style: const TextStyle(
-                              color: Colors.white38, fontSize: 13)),
+                      // The label gets the full column width on its own line and
+                      // a scale-down FittedBox so longer tiers (e.g. "Legendary")
+                      // render in full — never ellipsized — even with the online
+                      // per-tier leaderboard icon present. It keeps full size on
+                      // real-device widths and only shrinks on very narrow ones.
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(d.label,
+                              maxLines: 1,
+                              softWrap: false,
+                              style: TextStyle(
+                                  color: completed
+                                      ? AppColors.textMuted
+                                      : AppColors.textPrimary,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w800)),
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      // Difficulty pips + status share the second line; the
+                      // status can ellipsize (never the fixed trailing row), so
+                      // the card never overflows on narrow phones.
+                      Row(
+                        children: [
+                          _DifficultyPips(
+                            filled: widget.rank + 1,
+                            total: Difficulty.values.length,
+                            color: accent,
+                          ),
+                          const SizedBox(width: AppSpacing.sm),
+                          Expanded(
+                            child: Text(
+                              completed
+                                  ? 'Done today ✓'
+                                  : '${d.startingFill} starting tiles',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  color: completed
+                                      ? AppColors.success
+                                      : AppColors.textFaint,
+                                  fontSize: 13,
+                                  fontWeight: completed
+                                      ? FontWeight.w700
+                                      : FontWeight.w400),
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
-                IconButton(
-                  key: Key('practice-${d.name}'),
+                _cardIconButton(
+                  iconKey: Key('practice-${d.name}'),
                   tooltip: 'Practice',
-                  icon:
-                      const Icon(Icons.fitness_center, color: Colors.white54),
-                  onPressed: () => _openPractice(context, d),
+                  icon: Icons.fitness_center,
+                  onPressed: widget.onPractice,
                 ),
-                if (widget.leaderboard != null)
-                  IconButton(
-                    key: Key('leaderboard-${d.name}'),
+                if (widget.onLeaderboard != null)
+                  _cardIconButton(
+                    iconKey: Key('leaderboard-${d.name}'),
                     tooltip: 'Leaderboard',
-                    icon: const Icon(Icons.leaderboard, color: Colors.white54),
-                    onPressed: () => _openLeaderboard(context, d),
+                    icon: Icons.leaderboard,
+                    onPressed: widget.onLeaderboard!,
                   ),
-                if (completed)
-                  const Text('Done today ✓',
-                      style: TextStyle(
-                          color: Colors.greenAccent,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700))
-                else
-                  const Icon(Icons.chevron_right, color: Colors.white54),
+                Icon(
+                  completed ? Icons.check_circle : Icons.chevron_right,
+                  color: completed
+                      ? AppColors.success
+                      : AppColors.textMuted,
+                ),
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// A compact 1-of-N difficulty meter rendered as filled/empty dots.
+class _DifficultyPips extends StatelessWidget {
+  final int filled;
+  final int total;
+  final Color color;
+
+  const _DifficultyPips({
+    required this.filled,
+    required this.total,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < total; i++)
+          Padding(
+            padding: const EdgeInsets.only(right: 3),
+            child: Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: i < filled ? color : AppColors.border,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

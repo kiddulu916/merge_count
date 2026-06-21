@@ -261,7 +261,7 @@ class _MergeCountAppState extends State<MergeCountApp> {
       );
     }
     return MaterialApp(
-      title: 'Merge Count',
+      title: 'Connect Merge',
       debugShowCheckedModeBanner: false,
       navigatorKey: _navKey,
       scaffoldMessengerKey: _messengerKey,
