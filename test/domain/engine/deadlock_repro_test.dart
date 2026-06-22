@@ -48,7 +48,8 @@ List<int> longestChain(BoardState s) {
   return best.length >= 2 ? best : const [];
 }
 
-/// Mirror playChain's refill: drop into random empty cells until startingFill.
+/// Intentionally simulates the PRE-FIX refill strategy (fill to startingFill,
+/// no hasMergeAvailable guarantee) to measure how often it deadlocks.
 BoardState refill(BoardState board, DailySeeder seeder, Prng dropTier,
     Prng landing, int targetFill) {
   while (board.filledCount < targetFill && board.emptyIndices.isNotEmpty) {
