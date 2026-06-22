@@ -281,9 +281,14 @@ class GameCubit extends Cubit<GameState> {
     var board =
         GameEngine.collapseChain(s.board, path).copyWith(moveLog: log);
 
-    // Refill to the difficulty's starting fill (a chain of N freed N-1 cells).
+    // Fill to targetFill AND guarantee at least one adjacent merge is available.
+    // Stop only when the board is completely full (true deadlock → evaluateStatus).
+    // Must mirror verifyRun's refill loop in supabase/functions/_shared/engine.ts.
     final targetFill = _difficulty.startingFill;
-    while (board.filledCount < targetFill && board.emptyIndices.isNotEmpty) {
+    while (board.emptyIndices.isNotEmpty) {
+      final needsFill = board.filledCount < targetFill;
+      final needsMerge = !GameEngine.hasMergeAvailable(board);
+      if (!needsFill && !needsMerge) break;
       final tier = _seeder.dropTierAt(_dropTier, board.dropIndex);
       board = GameEngine.applyDrop(
         board,

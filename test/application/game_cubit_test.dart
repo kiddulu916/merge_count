@@ -365,6 +365,53 @@ void main() {
     expect(a.length, kDropQueueVisible);
     expect(a, b); // idempotent (no consumption)
   });
+
+  test('refill guarantee: board always has a merge after each chain play', () async {
+    // Helper: find any 2-cell chain (east or south neighbour) on the board.
+    List<int>? findChain(BoardState board) {
+      final gs = board.gridSize;
+      final count = board.cells.length;
+      for (var i = 0; i < count; i++) {
+        final t = board.cells[i];
+        if (t == null || t.tier >= kMaxTier) continue;
+        final col = i % gs;
+        final row = i ~/ gs;
+        if (col + 1 < gs) {
+          final e = board.cells[i + 1];
+          if (e != null && e.tier == t.tier) return [i, i + 1];
+        }
+        if (row + 1 < gs) {
+          final s = board.cells[i + gs];
+          if (s != null && s.tier == t.tier) return [i, i + gs];
+        }
+      }
+      return null;
+    }
+
+    // Play 8 chains from an Easy game (largest board, most tiles).
+    // After each playChain, if the board is still "playing",
+    // hasMergeAvailable MUST be true.
+    final storage = InMemoryStorageService();
+    final cubit = GameCubit(storage: storage, todayProvider: () => '2026-06-20');
+    await cubit.init(difficulty: Difficulty.easy);
+    for (var move = 0; move < 8; move++) {
+      final s = cubit.state;
+      if (s is! GamePlaying) break;
+      final chain = findChain(s.board);
+      if (chain == null) {
+        fail('Board deadlocked at move $move — refill guarantee failed');
+      }
+      await cubit.playChain(chain);
+      final after = cubit.state;
+      if (after is GamePlaying) {
+        expect(
+          GameEngine.hasMergeAvailable(after.board),
+          isTrue,
+          reason: 'hasMergeAvailable must be true after refill (move $move)',
+        );
+      }
+    }
+  });
 }
 
 /// Persist a completed snapshot + run completion bookkeeping for [tier] on
