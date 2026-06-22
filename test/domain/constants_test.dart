@@ -30,7 +30,7 @@ void main() {
     });
 
     test('wall count increases as the board gets harder', () {
-      expect(wallCountFor(Difficulty.easy), 0);
+      expect(wallCountFor(Difficulty.easy), 2);
       expect(wallCountFor(Difficulty.legendary) >= wallCountFor(Difficulty.easy),
           isTrue);
     });

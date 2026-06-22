@@ -3,7 +3,8 @@ library;
 
 import 'models/difficulty.dart';
 
-/// Board is a fixed kGridSize × kGridSize matrix.
+// Legacy constant — 5×5 test boards only. All game code now uses
+// board.gridSize / board.cells.length or difficulty.gridSize / difficulty.cellCount.
 const int kGridSize = 5;
 const int kCellCount = kGridSize * kGridSize; // 25
 
@@ -140,7 +141,7 @@ const int kObjectiveRewardCoins = 25;
 
 /// Bumped when the persisted snapshot schema changes. An in-progress snapshot
 /// whose version != this is discarded on load (a daily resets anyway).
-const int kSnapshotVersion = 2;
+const int kSnapshotVersion = 3;
 
 /// Bumped at the Connect-Merge relaunch. Submitted with every score and used to
 /// filter leaderboard reads, so pre-relaunch scores never appear (hard reset).
@@ -149,8 +150,8 @@ const int kLeaderboardSeason = 2;
 /// Seed-placed wall cells per difficulty (block tiles, break paths). Easy has
 /// none; tighter boards get more. Tuning knob.
 int wallCountFor(Difficulty d) => switch (d) {
-      Difficulty.easy => 0,
-      Difficulty.medium => 2,
-      Difficulty.hard => 3,
-      Difficulty.legendary => 4,
+      Difficulty.easy => 2,
+      Difficulty.medium => 4,
+      Difficulty.hard => 5,
+      Difficulty.legendary => 6,
     };

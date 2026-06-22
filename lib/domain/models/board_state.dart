@@ -26,6 +26,9 @@ class BoardState {
   /// tier reached). Interpreted by the active [DailyObjective]. Default 0.
   final int objectiveProgress;
 
+  /// Grid side length. Default 5 for legacy test boards that don't pass it.
+  final int gridSize;
+
   const BoardState({
     required this.cells,
     required this.movesRemaining,
@@ -38,6 +41,7 @@ class BoardState {
     this.moveLog = const [],
     this.walls = const {},
     this.objectiveProgress = 0,
+    this.gridSize = 5,
   });
 
   BoardState copyWith({
@@ -52,6 +56,7 @@ class BoardState {
     List<MoveEvent>? moveLog,
     Set<int>? walls,
     int? objectiveProgress,
+    int? gridSize,
   }) {
     return BoardState(
       cells: cells ?? this.cells,
@@ -65,6 +70,7 @@ class BoardState {
       moveLog: moveLog ?? this.moveLog,
       walls: walls ?? this.walls,
       objectiveProgress: objectiveProgress ?? this.objectiveProgress,
+      gridSize: gridSize ?? this.gridSize,
     );
   }
 
@@ -104,6 +110,7 @@ class BoardState {
         'moveLog': moveLog.map((e) => e.toJson()).toList(),
         if (walls.isNotEmpty) 'walls': walls.toList(),
         if (objectiveProgress != 0) 'objectiveProgress': objectiveProgress,
+        'gridSize': gridSize,
       };
 
   static BoardState fromJson(Map<String, dynamic> j) {
@@ -132,6 +139,7 @@ class BoardState {
           .map((e) => e as int)
           .toSet(),
       objectiveProgress: (j['objectiveProgress'] as int?) ?? 0,
+      gridSize: (j['gridSize'] as int?) ?? 5,
     );
   }
 }

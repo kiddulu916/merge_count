@@ -2,11 +2,24 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:merge_count/domain/models/difficulty.dart';
 
 void main() {
-  test('starting tile counts are 10/8/6/4', () {
-    expect(Difficulty.easy.startingFill, 10);
-    expect(Difficulty.medium.startingFill, 8);
-    expect(Difficulty.hard.startingFill, 6);
-    expect(Difficulty.legendary.startingFill, 4);
+  test('starting tile counts are 40/25/20/15', () {
+    expect(Difficulty.easy.startingFill, 40);
+    expect(Difficulty.medium.startingFill, 25);
+    expect(Difficulty.hard.startingFill, 20);
+    expect(Difficulty.legendary.startingFill, 15);
+  });
+
+  test('grid sizes are 8/7/6/6', () {
+    expect(Difficulty.easy.gridSize, 8);
+    expect(Difficulty.medium.gridSize, 7);
+    expect(Difficulty.hard.gridSize, 6);
+    expect(Difficulty.legendary.gridSize, 6);
+  });
+
+  test('cellCount == gridSize * gridSize', () {
+    for (final d in Difficulty.values) {
+      expect(d.cellCount, d.gridSize * d.gridSize);
+    }
   });
 
   test('labels map correctly', () {
