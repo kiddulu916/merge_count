@@ -18,20 +18,21 @@ import 'package:merge_count/domain/models/game_status.dart';
 /// Find the longest same-tier orthogonally-adjacent simple path on the board,
 /// via greedy DFS from every live tile. Returns [] if no chain (length>=2).
 List<int> longestChain(BoardState s) {
+  final gs = s.gridSize;
   List<int> best = const [];
-  for (var start = 0; start < kCellCount; start++) {
+  for (var start = 0; start < s.cells.length; start++) {
     final t = s.cells[start];
     if (t == null || t.tier >= kMaxTier) continue;
     final path = <int>[start];
     final seen = <int>{start};
     void dfs(int cur) {
       if (path.length > best.length) best = List<int>.of(path);
-      final row = cur ~/ kGridSize, col = cur % kGridSize;
+      final row = cur ~/ gs, col = cur % gs;
       for (final n in [
-        if (col + 1 < kGridSize) cur + 1,
+        if (col + 1 < gs) cur + 1,
         if (col - 1 >= 0) cur - 1,
-        if (row + 1 < kGridSize) cur + kGridSize,
-        if (row - 1 >= 0) cur - kGridSize,
+        if (row + 1 < gs) cur + gs,
+        if (row - 1 >= 0) cur - gs,
       ]) {
         final nt = s.cells[n];
         if (nt == null || nt.tier != t.tier || seen.contains(n)) continue;
