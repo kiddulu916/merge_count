@@ -141,10 +141,10 @@ void main() {
 
   group('Connect-Merge path validation', () {
     test('areOrthogonallyAdjacent: true for N/S/E/W, false for diagonal/wrap', () {
-      expect(GameEngine.areOrthogonallyAdjacent(0, 1), isTrue); // E
-      expect(GameEngine.areOrthogonallyAdjacent(0, kGridSize), isTrue); // S
-      expect(GameEngine.areOrthogonallyAdjacent(0, kGridSize + 1), isFalse); // diag
-      expect(GameEngine.areOrthogonallyAdjacent(4, 5), isFalse); // row wrap (col4->col0)
+      expect(GameEngine.areOrthogonallyAdjacent(0, 1, 5), isTrue);          // E
+      expect(GameEngine.areOrthogonallyAdjacent(0, kGridSize, 5), isTrue);  // S
+      expect(GameEngine.areOrthogonallyAdjacent(0, kGridSize + 1, 5), isFalse); // diag
+      expect(GameEngine.areOrthogonallyAdjacent(4, 5, 5), isFalse);        // row wrap
     });
 
     test('isValidChain: accepts a connected same-tier run', () {

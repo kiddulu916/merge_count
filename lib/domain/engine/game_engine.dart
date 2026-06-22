@@ -91,17 +91,18 @@ class GameEngine {
   /// (a legal Connect-Merge of length 2). Position now matters: equal tiles that
   /// are not adjacent do NOT count, so a player can strand tiles into a deadlock.
   static bool hasMergeAvailable(BoardState s) {
-    for (var i = 0; i < kCellCount; i++) {
+    final gs = s.gridSize;
+    for (var i = 0; i < s.cells.length; i++) {
       final t = s.cells[i];
       if (t == null || t.tier >= kMaxTier) continue;
-      final row = i ~/ kGridSize, col = i % kGridSize;
+      final row = i ~/ gs, col = i % gs;
       // Check east and south neighbours only (covers every adjacency once).
-      if (col + 1 < kGridSize) {
+      if (col + 1 < gs) {
         final e = s.cells[i + 1];
         if (e != null && e.tier == t.tier) return true;
       }
-      if (row + 1 < kGridSize) {
-        final so = s.cells[i + kGridSize];
+      if (row + 1 < gs) {
+        final so = s.cells[i + gs];
         if (so != null && so.tier == t.tier) return true;
       }
     }
@@ -121,9 +122,9 @@ class GameEngine {
 
   /// True when cells [a] and [b] are orthogonal neighbours on the grid (no
   /// diagonals, no row wrap-around).
-  static bool areOrthogonallyAdjacent(int a, int b) {
-    final ra = a ~/ kGridSize, ca = a % kGridSize;
-    final rb = b ~/ kGridSize, cb = b % kGridSize;
+  static bool areOrthogonallyAdjacent(int a, int b, int gridSize) {
+    final ra = a ~/ gridSize, ca = a % gridSize;
+    final rb = b ~/ gridSize, cb = b % gridSize;
     final dr = (ra - rb).abs(), dc = (ca - cb).abs();
     return (dr + dc) == 1;
   }
@@ -140,12 +141,12 @@ class GameEngine {
     final tier = first.tier;
     for (var i = 0; i < path.length; i++) {
       final idx = path[i];
-      if (idx < 0 || idx >= kCellCount) return false;
+      if (idx < 0 || idx >= s.cells.length) return false;
       if (!seen.add(idx)) return false; // repeat
       if (s.walls.contains(idx)) return false; // reject walls
       final t = s.cells[idx];
       if (t == null || t.tier != tier) return false;
-      if (i > 0 && !areOrthogonallyAdjacent(path[i - 1], idx)) return false;
+      if (i > 0 && !areOrthogonallyAdjacent(path[i - 1], idx, s.gridSize)) return false;
     }
     return true;
   }
