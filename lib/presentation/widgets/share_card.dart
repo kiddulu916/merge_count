@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../domain/constants.dart';
 import '../../domain/models/board_state.dart';
 import '../../domain/models/cosmetic.dart';
 import '../../domain/models/difficulty.dart';
@@ -176,14 +175,14 @@ class _MiniBoard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: GridView.count(
-        crossAxisCount: kGridSize,
+        crossAxisCount: board.gridSize,
         mainAxisSpacing: gap,
         crossAxisSpacing: gap,
         physics: const NeverScrollableScrollPhysics(),
         children: [
-          for (var i = 0; i < kCellCount; i++)
+          for (var i = 0; i < board.cells.length; i++)
             _MiniCell(
-                tile: i < board.cells.length ? board.cells[i] : null,
+                tile: board.cells[i],
                 cosmetic: cosmetic),
         ],
       ),

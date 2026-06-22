@@ -1,4 +1,3 @@
-import '../constants.dart';
 import '../models/board_state.dart';
 
 /// Builds a Wordle-style shareable result string from a final board.
@@ -6,18 +5,19 @@ class ShareGridBuilder {
   const ShareGridBuilder._();
 
   static String build({required String date, required BoardState board}) {
+    final gs = board.gridSize;
     final best = board.highestTier;
     final sb = StringBuffer()
       ..writeln('Merge Count $date')
       ..writeln(
           'Score ${board.score} · Best ${emojiForTier(best)}${1 << best} · ${board.movesMade} moves');
 
-    for (var r = 0; r < kGridSize; r++) {
-      for (var c = 0; c < kGridSize; c++) {
-        final tile = board.cells[r * kGridSize + c];
+    for (var r = 0; r < gs; r++) {
+      for (var c = 0; c < gs; c++) {
+        final tile = board.cells[r * gs + c];
         sb.write(tile == null ? '⬛' : emojiForTier(tile.tier));
       }
-      if (r < kGridSize - 1) sb.write('\n');
+      if (r < gs - 1) sb.write('\n');
     }
     return sb.toString();
   }

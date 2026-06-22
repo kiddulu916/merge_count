@@ -41,8 +41,10 @@ class _BoardWidgetState extends State<BoardWidget> {
 
   int? _cellAt(Offset local) {
     final step = _cell + _gap;
-    for (var i = 0; i < kCellCount; i++) {
-      final row = i ~/ kGridSize, col = i % kGridSize;
+    final count = widget.board.cells.length;
+    final gs = widget.board.gridSize;
+    for (var i = 0; i < count; i++) {
+      final row = i ~/ gs, col = i % gs;
       final rect = Rect.fromLTWH(
           _gap + col * step, _gap + row * step, _cell, _cell);
       if (rect.contains(local)) return i;
@@ -95,22 +97,23 @@ class _BoardWidgetState extends State<BoardWidget> {
       builder: (context, constraints) {
         const gap = 8.0;
         final boardSize = constraints.maxWidth;
-        final cell = (boardSize - gap * (kGridSize + 1)) / kGridSize;
+        final gs = widget.board.gridSize;
+        final cell = (boardSize - gap * (gs + 1)) / gs;
 
         // Store for hit-testing in gesture callbacks.
         _gap = gap;
         _cell = cell;
 
         Offset offsetFor(int index) {
-          final row = index ~/ kGridSize;
-          final col = index % kGridSize;
+          final row = index ~/ gs;
+          final col = index % gs;
           return Offset(gap + col * (cell + gap), gap + row * (cell + gap));
         }
 
         final children = <Widget>[];
 
         // Backing slots: render walls distinctly.
-        for (var i = 0; i < kCellCount; i++) {
+        for (var i = 0; i < widget.board.cells.length; i++) {
           final pos = offsetFor(i);
           final isWall = widget.board.walls.contains(i);
           children.add(Positioned(
@@ -133,7 +136,7 @@ class _BoardWidgetState extends State<BoardWidget> {
 
         // Floating live tiles keyed by id (for AnimatedPositioned animations).
         // Cells in the current path get a glow highlight.
-        for (var i = 0; i < kCellCount; i++) {
+        for (var i = 0; i < widget.board.cells.length; i++) {
           final tile = widget.board.cells[i];
           if (tile == null) continue;
           final pos = offsetFor(i);
