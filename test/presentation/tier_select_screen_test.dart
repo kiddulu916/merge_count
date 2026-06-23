@@ -26,13 +26,20 @@ void main() {
     // The tier list is a scrollable ListView, so a lower tier may start below
     // the fold; scroll each card into view before asserting on it.
     final tierList = find.byType(Scrollable).last;
-    for (final d in Difficulty.values) {
+    final regularTiers =
+        Difficulty.values.where((d) => d != Difficulty.challenge);
+    for (final d in regularTiers) {
       final card = find.byKey(Key('tier-${d.name}'));
       await tester.scrollUntilVisible(card, 100, scrollable: tierList);
       expect(card, findsOneWidget);
       expect(find.text(d.label), findsOneWidget);
       expect(find.text('${d.startingFill} starting tiles'), findsOneWidget);
     }
+    // The challenge card is a separate widget below the four tier cards.
+    final challengeCard = find.byKey(const Key('tier-challenge'));
+    await tester.scrollUntilVisible(challengeCard, 100, scrollable: tierList);
+    expect(challengeCard, findsOneWidget);
+    expect(find.text('Daily Challenge'), findsOneWidget);
   });
 
   testWidgets('tapping a tier reports the chosen difficulty', (tester) async {
