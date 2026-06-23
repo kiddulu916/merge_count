@@ -5,6 +5,7 @@ import '../domain/engine/daily_seeder.dart';
 import '../domain/engine/game_engine.dart';
 import '../domain/engine/prng.dart';
 import '../domain/models/board_state.dart';
+import '../domain/models/challenge_rule.dart';
 import '../domain/models/daily_objective.dart';
 import '../domain/models/difficulty.dart';
 import '../domain/models/day_result.dart';
@@ -88,6 +89,12 @@ class GameCubit extends Cubit<GameState> {
   late Difficulty _difficulty;
   late String _date;
 
+  /// The active challenge rule (non-null only in challenge mode).
+  ChallengeRule? _activeRule;
+
+  /// Effective starting fill, accounting for challenge rule overrides.
+  late int _targetFill;
+
   /// On-demand drop-tier stream (stream "drops"), advanced in lock-step with
   /// dropIndex exactly like [_landing]. Rebuilt by replay on resume/undo.
   late Prng _dropTier;
@@ -95,6 +102,9 @@ class GameCubit extends Cubit<GameState> {
   /// The day's objective (seed-derived). Read by the UI and tracked per chain.
   late DailyObjective _objective;
   DailyObjective get objective => _objective;
+
+  /// The active challenge rule, or null when not in challenge mode.
+  ChallengeRule? get activeRule => _activeRule;
 
   late Prng _landing;
 
@@ -155,17 +165,46 @@ class GameCubit extends Cubit<GameState> {
   })  : todayProvider = todayProvider ?? utcToday,
         super(const GameInitial());
 
-  Future<void> init({required Difficulty difficulty}) async {
+  Future<void> init({
+    required Difficulty difficulty,
+    ChallengeRule? ruleOverride, // for testing; production derives from seeder
+  }) async {
     _difficulty = difficulty;
     _date = todayProvider();
     _seeder = DailySeeder(_date, difficulty);
-    final start = _seeder.generate();
     _goldenDrops = _seeder.goldenDropIndices();
     _objective = _seeder.dailyObjective();
     // A fresh init (or resume) starts with no rewindable history.
     _undoStack.clear();
     _undosUsed = 0;
     _objectiveMet = false;
+
+    // Derive rule + generate board BEFORE snapshot check so a resumed challenge
+    // game also has correct _activeRule / _targetFill when playChain is called.
+    final DailyStart start;
+    if (difficulty == Difficulty.challenge) {
+      _activeRule = ruleOverride ?? _seeder.challengeRule;
+      final rule = _activeRule!;
+      final fill = switch (rule) {
+        ChallengeRule.denseStart => kChallengeDenseFill,
+        ChallengeRule.sparseStart => kChallengeSparseFill,
+        _ => difficulty.startingFill,
+      };
+      final wallCount =
+          rule == ChallengeRule.wallMaze ? kChallengeWallMazeCount : null;
+      final moves =
+          rule == ChallengeRule.budgetCut ? kChallengeMoves : null;
+      _targetFill = fill;
+      start = _seeder.generate(
+        startingFillOverride: fill,
+        wallCountOverride: wallCount,
+        movesOverride: moves,
+      );
+    } else {
+      _activeRule = null;
+      _targetFill = difficulty.startingFill;
+      start = _seeder.generate();
+    }
 
     final snap = storage.loadSnapshot(_date, difficulty);
     if (snap != null && snap.date == _date && snap.version == kSnapshotVersion) {
@@ -261,6 +300,8 @@ class GameCubit extends Cubit<GameState> {
   Future<void> playChain(List<int> path) async {
     final s = state;
     if (s is! GamePlaying) return;
+    // Long Chains Only rule: reject chains shorter than 3 tiles.
+    if (_activeRule == ChallengeRule.longChainsOnly && path.length < 3) return;
     if (!GameEngine.isValidChain(s.board, path)) return;
 
     // Golden bonus: every golden tile consumed anywhere in the path pays out.
@@ -278,13 +319,18 @@ class GameCubit extends Cubit<GameState> {
 
     final log = List<MoveEvent>.of(s.board.moveLog)..add(ChainEvent(path: path));
 
-    var board =
-        GameEngine.collapseChain(s.board, path).copyWith(moveLog: log);
+    var board = GameEngine.collapseChain(
+      s.board,
+      path,
+      comboMultiplierFn: _activeRule == ChallengeRule.comboRush
+          ? comboRushMultiplier
+          : null,
+    ).copyWith(moveLog: log);
 
     // Fill to targetFill AND guarantee at least one adjacent merge is available.
     // Stop only when the board is completely full (true deadlock → evaluateStatus).
     // Must mirror verifyRun's refill loop in supabase/functions/_shared/engine.ts.
-    final targetFill = _difficulty.startingFill;
+    final targetFill = _targetFill;
     while (board.emptyIndices.isNotEmpty) {
       final needsFill = board.filledCount < targetFill;
       final needsMerge = !GameEngine.hasMergeAvailable(board);
