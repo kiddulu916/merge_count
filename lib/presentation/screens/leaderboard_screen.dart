@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../application/game_cubit.dart';
 import '../../domain/models/difficulty.dart';
 import '../../domain/models/leaderboard_entry.dart';
+import '../../domain/models/weekly_prize.dart';
 import '../../infrastructure/friends_service.dart';
 import '../../infrastructure/leaderboard_service.dart';
 import '../widgets/leaderboard_row.dart';
@@ -58,12 +59,17 @@ class LeaderboardScreen extends StatefulWidget {
   /// Override for tests; defaults to the real UTC date string.
   final String Function()? todayProvider;
 
+  /// The player's weekly prize history, used to show crown badges on "me" rows
+  /// and the "Your Crowns" expandable section.
+  final List<WeeklyPrize> weeklyPrizes;
+
   const LeaderboardScreen({
     super.key,
     required this.service,
     this.friendsService,
     this.initialDifficulty = Difficulty.easy,
     this.todayProvider,
+    this.weeklyPrizes = const [],
   });
 
   String today() => (todayProvider ?? utcToday)();
@@ -86,6 +92,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen>
       vsync: this,
       initialIndex: Difficulty.values.indexOf(widget.initialDifficulty),
     );
+    _tabs.addListener(() {
+      if (!_tabs.indexIsChanging) setState(() {});
+    });
   }
 
   @override
@@ -136,8 +145,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen>
               ),
             ),
           // Period tabs apply only to the global board (the friends RPC is
-          // daily-only). Hidden in Friends scope.
-          if (_scope == LeaderboardScope.global)
+          // daily-only). Hidden in Friends scope and on the challenge tab
+          // (challenge is always daily-only).
+          if (_scope == LeaderboardScope.global &&
+              Difficulty.values[_tabs.index] != Difficulty.challenge)
             Padding(
               padding: const EdgeInsets.only(left: 8, right: 8, bottom: 8),
               child: SingleChildScrollView(
@@ -169,14 +180,48 @@ class _LeaderboardScreenState extends State<LeaderboardScreen>
                     period: _period,
                     difficulty: d,
                     date: widget.today(),
+                    weeklyPrizes: widget.weeklyPrizes,
                   ),
               ],
             ),
           ),
+          if (widget.weeklyPrizes.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: ExpansionTile(
+                title: const Text('Your Crowns',
+                    style: TextStyle(color: Colors.white70)),
+                iconColor: Colors.amber,
+                collapsedIconColor: Colors.white54,
+                children: widget.weeklyPrizes
+                    .map(
+                      (p) => ListTile(
+                        leading: Text(_crownEmoji(p.rank),
+                            style: const TextStyle(fontSize: 20)),
+                        title: Text(
+                            '${p.tier.label} — Week of ${p.weekStart}',
+                            style: const TextStyle(
+                                color: Colors.white70, fontSize: 13)),
+                        trailing: Text('#${p.rank}',
+                            style:
+                                const TextStyle(color: Colors.white54)),
+                        dense: true,
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
         ],
       ),
     );
   }
+
+  String _crownEmoji(int rank) => switch (rank) {
+        1 => '\u{1F947}',
+        2 => '\u{1F948}',
+        3 => '\u{1F949}',
+        _ => '\u{1F3C5}',
+      };
 }
 
 class _TierBoard extends StatefulWidget {
@@ -186,6 +231,7 @@ class _TierBoard extends StatefulWidget {
   final LeaderboardPeriod period;
   final Difficulty difficulty;
   final String date;
+  final List<WeeklyPrize> weeklyPrizes;
 
   const _TierBoard({
     super.key,
@@ -195,6 +241,7 @@ class _TierBoard extends StatefulWidget {
     required this.period,
     required this.difficulty,
     required this.date,
+    this.weeklyPrizes = const [],
   });
 
   @override
@@ -236,6 +283,31 @@ class _TierBoardState extends State<_TierBoard>
     await _future;
   }
 
+  /// Returns the prize indicator suffix for challenge-board rows.
+  /// Ranks 1-3 get 🏆; ranks 4-10 get ✦; others get null.
+  String? _challengeSuffix(int rank) {
+    if (rank <= 3) return '\u{1F3C6}';
+    if (rank <= 10) return '✶';
+    return null;
+  }
+
+  /// Returns the crown emoji for "me" rows that have a matching weekly prize
+  /// on this tier. Returns null for other players or when there is no prize.
+  String? _weekCrown(LeaderboardEntry entry) {
+    if (!entry.isMe) return null;
+    for (final prize in widget.weeklyPrizes) {
+      if (prize.tier == widget.difficulty) {
+        return switch (prize.rank) {
+          1 => '\u{1F947}',
+          2 => '\u{1F948}',
+          3 => '\u{1F949}',
+          _ => null,
+        };
+      }
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -254,7 +326,11 @@ class _TierBoardState extends State<_TierBoard>
             onRetry: _refresh,
           );
         }
-        final entries = snap.data ?? const <LeaderboardEntry>[];
+        final allEntries = snap.data ?? const <LeaderboardEntry>[];
+        // Challenge board is capped at top-10.
+        final entries = widget.difficulty == Difficulty.challenge
+            ? allEntries.take(10).toList()
+            : allEntries;
         if (entries.isEmpty) {
           return _Message(
             key: const Key('lb-empty'),
@@ -269,7 +345,16 @@ class _TierBoardState extends State<_TierBoard>
           child: ListView.builder(
             key: const Key('lb-list'),
             itemCount: entries.length,
-            itemBuilder: (context, i) => LeaderboardRow(entry: entries[i]),
+            itemBuilder: (context, i) {
+              final entry = entries[i];
+              return LeaderboardRow(
+                entry: entry,
+                crownEmoji: _weekCrown(entry),
+                prizeSuffix: widget.difficulty == Difficulty.challenge
+                    ? _challengeSuffix(entry.rank)
+                    : null,
+              );
+            },
           ),
         );
       },

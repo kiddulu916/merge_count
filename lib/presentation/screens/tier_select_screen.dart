@@ -233,6 +233,7 @@ class _TierSelectScreenState extends State<TierSelectScreen> {
           friendsService: widget.friends,
           initialDifficulty: difficulty,
           todayProvider: widget.todayProvider,
+          weeklyPrizes: _engagement.state.weeklyPrizes,
         ),
       ),
     );
