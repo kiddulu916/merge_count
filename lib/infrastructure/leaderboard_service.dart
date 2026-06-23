@@ -77,6 +77,10 @@ class LeaderboardService {
       'moveLog': moveLog.map((e) => e.toJson()).toList(),
       'season': kLeaderboardSeason,
     });
+    assert(
+      data['valid'] == true || data.containsKey('reason'),
+      'submit-score returned unexpected shape: $data',
+    );
     return SubmitResult.fromJson(data);
   }
 
