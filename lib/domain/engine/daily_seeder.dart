@@ -3,6 +3,7 @@ import 'package:crypto/crypto.dart';
 
 import '../constants.dart';
 import '../models/board_state.dart';
+import '../models/challenge_rule.dart';
 import '../models/daily_objective.dart';
 import '../models/difficulty.dart';
 import '../models/game_status.dart';
@@ -42,6 +43,13 @@ class DailySeeder {
   int get _seedA => seedForKey(_key);
   int get _seedB => seedForKey(_key) ^ 0x9E3779B9;
 
+  /// The rule for today's Challenge board, derived from the `"$date:challenge"`
+  /// seed. Deterministic — same date returns identical rule for every player.
+  ChallengeRule get challengeRule {
+    final idx = Prng(DailySeeder.seedForKey('$date:challenge')).nextInt(6);
+    return ChallengeRule.values[idx];
+  }
+
   /// The set of drop indices that are "golden" for this date+tier, derived from
   /// an independent `"$_key:gold"` sub-stream (decoupled from board placement,
   /// drop tiers, and landing). Same date+tier ⇒ identical set for every player.
@@ -58,10 +66,8 @@ class DailySeeder {
     return out;
   }
 
-  /// Deterministic wall cells for this date+tier, drawn from an independent
-  /// `'$_key:walls'` stream so it never perturbs board/drop/landing streams.
-  Set<int> wallIndices() {
-    final count = wallCountFor(difficulty);
+  /// Private helper: draw [count] distinct wall indices from the walls stream.
+  Set<int> _wallIndicesWithCount(int count) {
     if (count == 0) return const {};
     final w = Prng(seedForKey('$_key:walls'));
     final out = <int>{};
@@ -71,11 +77,20 @@ class DailySeeder {
     return out;
   }
 
-  DailyStart generate() {
+  /// Deterministic wall cells for this date+tier, drawn from an independent
+  /// `'$_key:walls'` stream so it never perturbs board/drop/landing streams.
+  Set<int> wallIndices() => _wallIndicesWithCount(wallCountFor(difficulty));
+
+  DailyStart generate({
+    int? startingFillOverride,
+    int? wallCountOverride,
+    int? movesOverride,
+  }) {
     final a = Prng(_seedA);
-    final walls = wallIndices();
-    final startingFill = difficulty.startingFill;
+    final walls = _wallIndicesWithCount(wallCountOverride ?? wallCountFor(difficulty));
+    final startingFill = startingFillOverride ?? difficulty.startingFill;
     final cellCount = difficulty.cellCount;
+    final movesRemaining = movesOverride ?? kMovesPerDay;
 
     // Re-roll loop: keep drawing placements from stream A until the resulting
     // board has at least one orthogonally-adjacent same-tier pair so no player
@@ -120,7 +135,7 @@ class DailySeeder {
       // Quick validity check: build a candidate board and test adjacency.
       final candidate = BoardState(
         cells: cells,
-        movesRemaining: kMovesPerDay,
+        movesRemaining: movesRemaining,
         score: 0,
         nextTileId: nextId,
         dropIndex: 0,
@@ -145,7 +160,7 @@ class DailySeeder {
 
     final board = BoardState(
       cells: cells,
-      movesRemaining: kMovesPerDay,
+      movesRemaining: movesRemaining,
       score: 0,
       nextTileId: nextId,
       dropIndex: 0,

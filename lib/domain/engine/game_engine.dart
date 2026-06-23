@@ -162,7 +162,14 @@ class GameEngine {
   /// other path cells empty, score gains the combo total, one move is spent.
   /// Caller must have checked [isValidChain]. Mirrors [merge]: no drop, no log
   /// (the cubit applies the refill and records the [ChainEvent]).
-  static BoardState collapseChain(BoardState s, List<int> path) {
+  ///
+  /// [comboMultiplierFn] overrides the default [comboMultiplier] for challenge
+  /// rules (e.g. [comboRushMultiplier] for the Combo Rush rule).
+  static BoardState collapseChain(
+    BoardState s,
+    List<int> path, {
+    int Function(int)? comboMultiplierFn,
+  }) {
     final endIdx = path.last;
     final endTile = s.cells[endIdx]!;
     final mergedTier = endTile.tier;
@@ -172,9 +179,10 @@ class GameEngine {
       cells[idx] = null;
     }
     cells[endIdx] = Tile(id: endTile.id, tier: newTier);
+    final fn = comboMultiplierFn ?? comboMultiplier;
     return s.copyWith(
       cells: cells,
-      score: s.score + comboScore(mergedTier, path.length),
+      score: s.score + (1 << (mergedTier + 1)) * fn(path.length),
       movesRemaining: s.movesRemaining - 1,
       movesMade: s.movesMade + 1,
     );
