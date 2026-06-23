@@ -110,7 +110,7 @@ enum Achievement {
         final r = p.bestRankAny;
         return r != null && r <= 10;
       case Achievement.tierMaster:
-        return Difficulty.values.every((d) => p.tierStreak(d) >= 7);
+        return Difficulty.values.where((d) => d != Difficulty.challenge).every((d) => p.tierStreak(d) >= 7);
       case Achievement.highRoller:
         return p.bestTierAny >= 10;
     }

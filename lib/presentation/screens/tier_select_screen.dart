@@ -170,7 +170,7 @@ class _TierSelectScreenState extends State<TierSelectScreen> {
 
   /// True when every tier's day is already completed.
   bool _allTiersDoneToday() =>
-      Difficulty.values.every(_isCompleted);
+      Difficulty.values.where((d) => d != Difficulty.challenge).every(_isCompleted);
 
   /// Reschedule the daily reminder + streak-expiry warning. No-op without a
   /// notification service or when permission isn't granted yet (the plan is
