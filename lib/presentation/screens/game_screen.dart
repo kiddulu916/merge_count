@@ -6,6 +6,7 @@ import '../../application/game_cubit.dart';
 import '../../application/game_state.dart';
 import '../../domain/engine/near_miss.dart';
 import '../../domain/models/board_state.dart';
+import '../../domain/models/challenge_rule.dart';
 import '../../domain/models/cosmetic.dart';
 import '../../domain/models/player_level.dart';
 import '../../infrastructure/storage_service.dart';
@@ -228,6 +229,18 @@ class _GameScreenState extends State<GameScreen> {
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
+          // Challenge rule banner — shown at top when playing a challenge game.
+          if (cubit.activeRule != null)
+            Container(
+              width: double.infinity,
+              color: Colors.deepPurple.withValues(alpha: 0.85),
+              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+              child: Text(
+                'Today: ${cubit.activeRule!.label}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+            ),
           if (engagement != null)
             BlocBuilder<EngagementCubit, EngagementState>(
               bloc: engagement,
