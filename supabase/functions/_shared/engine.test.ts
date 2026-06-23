@@ -22,7 +22,7 @@ import {
   type Tile,
   verifyRun,
 } from "./engine.ts";
-import { kCellCount } from "./constants.ts";
+import { comboRushMultiplier, comboMultiplier, kCellCount } from "./constants.ts";
 
 // ---- Captured Dart vectors (PRNG/seedForKey unchanged by the redesign) ----
 
@@ -329,4 +329,18 @@ Deno.test("hasMergeAvailable: needs ADJACENT equal tiles (spatial deadlock)", ()
   assertFalse(hasMergeAvailable(apart));
   const together = boardWith({ 0: { id: 1, tier: 1 }, 1: { id: 2, tier: 1 } });
   assertEquals(hasMergeAvailable(together), true);
+});
+
+// ---- comboRushMultiplier tests ----
+
+Deno.test("comboRushMultiplier N=2 matches comboMultiplier (no doubling)", () => {
+  assertEquals(comboRushMultiplier(2), comboMultiplier(2));
+});
+
+Deno.test("comboRushMultiplier N=3 returns doubled multiplier", () => {
+  assertEquals(comboRushMultiplier(3), comboMultiplier(3) * 2);
+});
+
+Deno.test("comboRushMultiplier N=4 returns doubled multiplier", () => {
+  assertEquals(comboRushMultiplier(4), comboMultiplier(4) * 2);
 });

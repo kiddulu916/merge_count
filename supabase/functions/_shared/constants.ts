@@ -29,7 +29,7 @@ export function dropCap(n: number): number {
 }
 
 /** Difficulty tiers. `name` is the stable seed-key token. */
-export const DIFFICULTIES = ["easy", "medium", "hard", "legendary"] as const;
+export const DIFFICULTIES = ["easy", "medium", "hard", "legendary", "challenge"] as const;
 export type Difficulty = (typeof DIFFICULTIES)[number];
 
 /** Number of tiles placed on the board at the start of the day, per difficulty. */
@@ -38,6 +38,7 @@ export const STARTING_FILL: Record<Difficulty, number> = {
   medium: 25,
   hard: 20,
   legendary: 15,
+  challenge: 8, // nominal default; overridden by rule in verifyRunChallenge
 };
 
 /** Grid side length per difficulty (port of Difficulty.gridSize in Dart). */
@@ -46,6 +47,7 @@ export const GRID_SIZE: Record<Difficulty, number> = {
   medium: 7,
   hard: 6,
   legendary: 6,
+  challenge: 6,
 };
 
 export function isDifficulty(s: string): s is Difficulty {
@@ -70,7 +72,33 @@ export const WALL_COUNT: Record<Difficulty, number> = {
   medium: 4,
   hard: 5,
   legendary: 6,
+  challenge: 0, // overridden by wallMaze rule
 };
+
+export const kChallengeMoves = 15;
+export const kChallengeWallMazeCount = 8;
+export const kChallengeDenseFill = 14;
+export const kChallengeSparseFill = 3;
+
+/** Challenge rules — index must match Dart ChallengeRule.values order. */
+export const CHALLENGE_RULES = [
+  "budgetCut",
+  "longChainsOnly",
+  "denseStart",
+  "sparseStart",
+  "wallMaze",
+  "comboRush",
+] as const;
+export type ChallengeRule = (typeof CHALLENGE_RULES)[number];
+
+/**
+ * Combo Rush multiplier: doubles comboMultiplier for N≥3; N=2 stays at 1.
+ * Must stay in lockstep with Dart `comboRushMultiplier`.
+ */
+export function comboRushMultiplier(n: number): number {
+  if (n < 3) return comboMultiplier(n);
+  return comboMultiplier(n) * 2;
+}
 
 /**
  * Leaderboard season (port of Dart `kLeaderboardSeason`). The Connect-Merge

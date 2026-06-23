@@ -9,14 +9,20 @@
 // GameCubit.playChain / GameCubit.grantAdReward exactly.
 
 import { Prng } from "./prng.ts";
-import { DailySeeder } from "./seeder.ts";
+import { challengeRule, DailySeeder } from "./seeder.ts";
 import {
   comboMultiplier,
+  comboRushMultiplier,
   type Difficulty,
   isDifficulty,
   kAdMoveReward,
+  kChallengeDenseFill,
+  kChallengeMoves,
+  kChallengeSparseFill,
+  kChallengeWallMazeCount,
   kMaxAdContinuesPerDay,
   kMaxTier,
+  kMovesPerDay,
   STARTING_FILL,
 } from "./constants.ts";
 
@@ -101,18 +107,25 @@ export function comboScore(mergedTier: number, chainLength: number): number {
  * Collapse a validated path onto its endpoint (path.last): endpoint becomes
  * tier+1 keeping its id, all other path cells empty, score gains the combo
  * total, one move spent. Caller must have checked isValidChain.
+ * Optional `multiplierFn` overrides the default `comboMultiplier` (used by
+ * challenge rules such as comboRush).
  */
-export function collapseChain(s: BoardState, path: number[]): BoardState {
+export function collapseChain(
+  s: BoardState,
+  path: number[],
+  multiplierFn?: (n: number) => number,
+): BoardState {
   const endIdx = path[path.length - 1];
   const end = s.cells[endIdx]!;
   const mergedTier = end.tier;
+  const fn = multiplierFn ?? comboMultiplier;
   const cells = s.cells.slice();
   for (const idx of path) cells[idx] = null;
   cells[endIdx] = { id: end.id, tier: mergedTier + 1 };
   return {
     ...s,
     cells,
-    score: s.score + comboScore(mergedTier, path.length),
+    score: s.score + (1 << (mergedTier + 1)) * fn(path.length),
     movesRemaining: s.movesRemaining - 1,
     movesMade: s.movesMade + 1,
   };
@@ -272,6 +285,79 @@ export async function verifyRun(
         adContinuesUsed: board.adContinuesUsed + 1,
         status: "playing",
       };
+    }
+
+    if (board.movesRemaining < 0) return REJECT;
+  }
+
+  return {
+    valid: true,
+    score: board.score,
+    highestTier: highestTier(board),
+  };
+}
+
+/**
+ * Challenge-mode replay verifier. Derives the day's ChallengeRule, regenerates
+ * the challenge board with rule-specific overrides, and replays the move log
+ * applying rule constraints:
+ *   - budgetCut:      board starts with kChallengeMoves (15) moves.
+ *   - longChainsOnly: reject ChainEvent paths with length < 3.
+ *   - denseStart:     board seeded with kChallengeDenseFill tiles.
+ *   - sparseStart:    board seeded with kChallengeSparseFill tiles.
+ *   - wallMaze:       board seeded with kChallengeWallMazeCount walls.
+ *   - comboRush:      score computed with comboRushMultiplier.
+ */
+export async function verifyRunChallenge(
+  date: string,
+  log: unknown,
+): Promise<VerifyResult> {
+  if (!Array.isArray(log)) return REJECT;
+
+  const rule = await challengeRule(date);
+  const startingFillOverride = rule === "denseStart" ? kChallengeDenseFill
+    : rule === "sparseStart" ? kChallengeSparseFill
+    : STARTING_FILL["challenge"]; // 8 for other rules
+  const wallCountOverride = rule === "wallMaze" ? kChallengeWallMazeCount : 0;
+  // budgetCut gets kChallengeMoves (15); all other rules get kMovesPerDay (30).
+  const movesOverride = rule === "budgetCut" ? kChallengeMoves : kMovesPerDay;
+  const multiplierFn = rule === "comboRush" ? comboRushMultiplier : comboMultiplier;
+
+  const seeder = new DailySeeder(date, "challenge");
+  const start = await seeder.generate({
+    startingFillOverride,
+    wallCountOverride,
+    movesOverride,
+  });
+  const dropPrng = await seeder.dropTierPrng();
+  const landing = await seeder.landingPrng();
+  const startingFill = startingFillOverride;
+
+  let board = start.board;
+  let continues = 0;
+
+  for (const raw of log) {
+    const ev = parseEvent(raw);
+    if (ev === null) return REJECT;
+
+    if (ev.type === "chain") {
+      if (board.status !== "playing") return REJECT;
+      // longChainsOnly: reject paths shorter than 3.
+      if (rule === "longChainsOnly" && ev.path.length < 3) return REJECT;
+      if (!isValidChain(board, ev.path)) return REJECT;
+      board = collapseChain(board, ev.path, multiplierFn);
+      // Refill loop: fill to startingFill AND guarantee hasMergeAvailable.
+      while (emptyIndices(board).length > 0) {
+        const needsFill = filledCount(board) < startingFill;
+        const needsMerge = !hasMergeAvailable(board);
+        if (!needsFill && !needsMerge) break;
+        const tier = seeder.dropTierAt(dropPrng, board.dropIndex);
+        board = applyDrop(board, tier, landing);
+      }
+      board = evaluateStatus(board);
+    } else {
+      // Challenge mode has no ad-continues; treat any continue as illegal.
+      return REJECT;
     }
 
     if (board.movesRemaining < 0) return REJECT;

@@ -12,7 +12,7 @@
 //   422 { valid:false, reason:"invalid_run" }  (illegal log / wrong date / etc.)
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.107.0";
-import { verifyRun } from "../_shared/engine.ts";
+import { verifyRun, verifyRunChallenge } from "../_shared/engine.ts";
 import { isDifficulty, kLeaderboardSeason } from "../_shared/constants.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -79,7 +79,9 @@ Deno.serve(async (req) => {
   }
 
   // 3. Replay-verify. The server is the only score authority.
-  const result = await verifyRun(date, difficulty, moveLog);
+  const result = difficulty === "challenge"
+    ? await verifyRunChallenge(date, moveLog)
+    : await verifyRun(date, difficulty, moveLog);
   if (!result.valid) {
     return json({ valid: false, reason: "invalid_run" }, 422);
   }

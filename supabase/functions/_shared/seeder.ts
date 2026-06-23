@@ -14,6 +14,8 @@
 
 import { Prng } from "./prng.ts";
 import {
+  CHALLENGE_RULES,
+  type ChallengeRule,
   type Difficulty,
   dropCap,
   GRID_SIZE,
@@ -87,9 +89,8 @@ export class DailySeeder {
     return (await seedForKey(this.key)) ^ 0x9e3779b9;
   }
 
-  /** Seed-placed wall cells (port of DailySeeder.wallIndices), "walls" stream. */
-  async wallIndices(): Promise<Set<number>> {
-    const count = WALL_COUNT[this.difficulty];
+  /** Seed-placed wall cells with an explicit count (extracted helper). */
+  async wallIndicesWithCount(count: number): Promise<Set<number>> {
     if (count === 0) return new Set();
     const gridSize = GRID_SIZE[this.difficulty];
     const cellCount = gridSize * gridSize;
@@ -101,10 +102,21 @@ export class DailySeeder {
     return out;
   }
 
-  async generate(): Promise<DailyStart> {
+  /** Seed-placed wall cells (port of DailySeeder.wallIndices), "walls" stream. */
+  async wallIndices(): Promise<Set<number>> {
+    return this.wallIndicesWithCount(WALL_COUNT[this.difficulty]);
+  }
+
+  async generate(opts?: {
+    startingFillOverride?: number;
+    wallCountOverride?: number;
+    movesOverride?: number;
+  }): Promise<DailyStart> {
     const a = new Prng(await this.seedA());
-    const walls = await this.wallIndices();
-    const startingFill = STARTING_FILL[this.difficulty];
+    const wallCount = opts?.wallCountOverride ?? WALL_COUNT[this.difficulty];
+    const walls = await this.wallIndicesWithCount(wallCount);
+    const startingFill = opts?.startingFillOverride ?? STARTING_FILL[this.difficulty];
+    const movesRemaining = opts?.movesOverride ?? kMovesPerDay;
     const gridSize = GRID_SIZE[this.difficulty];
     const cellCount = gridSize * gridSize;
 
@@ -137,7 +149,7 @@ export class DailySeeder {
     const board: BoardState = {
       cells,
       walls,
-      movesRemaining: kMovesPerDay,
+      movesRemaining,
       score: 0,
       nextTileId: nextId,
       dropIndex: 0,
@@ -166,4 +178,12 @@ export class DailySeeder {
   dropTierAt(p: Prng, n: number): number {
     return 1 + p.nextInt(dropCap(n));
   }
+}
+
+/** Derives today's ChallengeRule from the "$date:challenge" seed. */
+export async function challengeRule(date: string): Promise<ChallengeRule> {
+  const seed = await seedForKey(`${date}:challenge`);
+  const prng = new Prng(seed);
+  const idx = prng.nextInt(6);
+  return CHALLENGE_RULES[idx];
 }
