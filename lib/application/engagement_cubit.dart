@@ -5,8 +5,10 @@ import '../domain/models/achievement.dart';
 import '../domain/models/almanac.dart';
 import '../domain/models/cosmetic.dart';
 import '../domain/models/difficulty.dart';
+import '../domain/models/leaderboard_entry.dart';
 import '../domain/models/player_level.dart';
 import '../domain/models/streak.dart';
+import '../domain/models/weekly_prize.dart';
 import '../infrastructure/storage_service.dart';
 import 'game_cubit.dart' show utcToday;
 
@@ -45,6 +47,9 @@ class EngagementState {
   /// The Merge Almanac (Phase 2) — per-tier collection + mastery badges.
   final Almanac almanac;
 
+  /// Permanent history of weekly top-3 finishes for the "Your Crowns" UI.
+  final List<WeeklyPrize> weeklyPrizes;
+
   const EngagementState({
     this.dailyActiveStreak = 0,
     this.lastActiveDate,
@@ -56,6 +61,7 @@ class EngagementState {
     this.coins = 0,
     this.lifetimeXp = 0,
     this.almanac = Almanac.empty,
+    this.weeklyPrizes = const [],
   });
 
   /// The player's current level, derived from [lifetimeXp] (pure flair).
@@ -73,6 +79,7 @@ class EngagementState {
     int? coins,
     int? lifetimeXp,
     Almanac? almanac,
+    List<WeeklyPrize>? weeklyPrizes,
   }) =>
       EngagementState(
         dailyActiveStreak: dailyActiveStreak ?? this.dailyActiveStreak,
@@ -86,6 +93,7 @@ class EngagementState {
         coins: coins ?? this.coins,
         lifetimeXp: lifetimeXp ?? this.lifetimeXp,
         almanac: almanac ?? this.almanac,
+        weeklyPrizes: weeklyPrizes ?? this.weeklyPrizes,
       );
 }
 
@@ -132,6 +140,7 @@ class EngagementCubit extends Cubit<EngagementState> {
       coins: profile.coins,
       lifetimeXp: profile.lifetimeXp,
       almanac: Almanac.fromStorage(profile.almanacCounts),
+      weeklyPrizes: profile.weeklyPrizes,
     ));
   }
 
@@ -277,6 +286,93 @@ class EngagementCubit extends Cubit<EngagementState> {
       unlockedCosmetics: {...state.unlockedCosmetics, cosmetic},
     ));
     return true;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Weekly prize constants
+  // ---------------------------------------------------------------------------
+
+  static const _weeklyCoins = {1: 500, 2: 250, 3: 100};
+
+  // ---------------------------------------------------------------------------
+  // Weekly prize helpers
+  // ---------------------------------------------------------------------------
+
+  /// Returns the Monday of the most recent completed ISO week (last Monday in UTC).
+  /// "Last Monday" = today if today IS Monday, else the preceding Monday.
+  static String _lastMonday(String today) {
+    final d = DateTime.parse(today);
+    // weekday: Mon=1 ... Sun=7
+    final daysSinceMonday = (d.weekday - 1) % 7;
+    final monday = d.subtract(Duration(days: daysSinceMonday));
+    return monday.toIso8601String().substring(0, 10);
+  }
+
+  static String _lastSunday(String monday) {
+    final m = DateTime.parse(monday);
+    return m.add(const Duration(days: 6)).toIso8601String().substring(0, 10);
+  }
+
+  /// Check if the player placed top-3 in last week's leaderboard for any tier.
+  /// Idempotent: the `lastWeeklyPrizeDate` guard prevents double-granting.
+  /// [fetchPeriod] is the transport seam — matches [LeaderboardService.fetchPeriod]'s signature.
+  Future<void> checkWeeklyPrizes(
+    Future<List<LeaderboardEntry>> Function({
+      required Difficulty difficulty,
+      required String from,
+      required String to,
+    }) fetchPeriod,
+  ) async {
+    final today = todayProvider();
+    final lastMonday = _lastMonday(today);
+    final lastSunday = _lastSunday(lastMonday);
+
+    final profile = storage.loadProfile();
+    if (profile.lastWeeklyPrizeDate == lastMonday) return; // already checked this week
+
+    int? bestRank; // best (lowest) rank across all non-challenge tiers
+    final newCrowns = <WeeklyPrize>[];
+
+    for (final difficulty in Difficulty.values) {
+      if (difficulty == Difficulty.challenge) continue; // challenge has its own payout
+      try {
+        final entries = await fetchPeriod(
+          difficulty: difficulty,
+          from: lastMonday,
+          to: lastSunday,
+        );
+        final myEntry = entries.where((e) => e.isMe).firstOrNull;
+        if (myEntry == null) continue;
+        if (_weeklyCoins.containsKey(myEntry.rank)) {
+          // Track best rank (lower = better)
+          if (bestRank == null || myEntry.rank < bestRank) {
+            bestRank = myEntry.rank;
+          }
+          newCrowns.add(WeeklyPrize(
+            weekStart: lastMonday,
+            tier: difficulty,
+            rank: myEntry.rank,
+          ));
+        }
+      } catch (_) {
+        // Network failure: skip this tier, try on next launch.
+      }
+    }
+
+    // Award coins once for the best rank achieved across all tiers this week.
+    final totalCoins = bestRank != null ? (_weeklyCoins[bestRank] ?? 0) : 0;
+
+    final updatedProfile = profile.copyWith(
+      lastWeeklyPrizeDate: lastMonday,
+      weeklyPrizes: [...profile.weeklyPrizes, ...newCrowns],
+      coins: profile.coins + totalCoins,
+    );
+    await storage.saveProfile(updatedProfile);
+
+    emit(state.copyWith(
+      coins: updatedProfile.coins,
+      weeklyPrizes: updatedProfile.weeklyPrizes,
+    ));
   }
 
   /// Grant a streak-freeze token (e.g. from a rewarded ad). Banked on every tier

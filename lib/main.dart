@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -80,6 +82,11 @@ Future<void> main() async {
       leaderboard = null;
       friends = null;
     }
+  }
+
+  // Weekly prizes: check on every app open (idempotent, no-op if checked this week).
+  if (leaderboard != null) {
+    unawaited(engagement.checkWeeklyPrizes(leaderboard.fetchPeriod));
   }
 
   // Deep links: invites (mergecount://invite/<code>) AND duels
