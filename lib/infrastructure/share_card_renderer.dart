@@ -1,6 +1,6 @@
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
@@ -31,9 +31,10 @@ class RepaintBoundaryShareCardRenderer extends ShareCardRenderer {
   Future<Uint8List?> capture(BuildContext boundaryContext) async {
     final obj = boundaryContext.findRenderObject();
     if (obj is! RenderRepaintBoundary) return null;
-    // If the boundary still needs paint, capturing now would throw / produce a
-    // stale frame — bail so the caller can fall back to the text share.
-    if (obj.debugNeedsPaint) return null;
+    // debugNeedsPaint is a debug-only API (assert-gated in the framework) that
+    // throws LateInitializationError in release builds. Guard it with kDebugMode
+    // so release builds fall through to the try-catch below instead.
+    if (kDebugMode && obj.debugNeedsPaint) return null;
     try {
       final image = await obj.toImage(pixelRatio: pixelRatio);
       final data = await image.toByteData(format: ui.ImageByteFormat.png);
