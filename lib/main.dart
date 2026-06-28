@@ -84,10 +84,12 @@ Future<void> main() async {
     }
   }
 
-  // Weekly prizes: check on every app open (idempotent, no-op if checked this week).
-  // Challenge payouts: check yesterday's challenge leaderboard for top-10 finish.
+  // Daily / weekly / monthly prizes + challenge payouts: checked on every app
+  // open and idempotent via their respective date guards.
   if (leaderboard != null) {
+    unawaited(engagement.checkDailyPrizes(leaderboard.fetch));
     unawaited(engagement.checkWeeklyPrizes(leaderboard.fetchPeriod));
+    unawaited(engagement.checkMonthlyPrizes(leaderboard.fetchPeriod));
     unawaited(engagement.checkChallengePayouts(leaderboard.fetch));
   }
 

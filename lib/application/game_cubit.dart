@@ -581,6 +581,15 @@ class GameCubit extends Cubit<GameState> {
     }
   }
 
+  /// Submit the current finished score when the player explicitly exits without
+  /// taking an ad continue. Safe to call even if the score was already submitted
+  /// (the [_submitted] guard makes [_submit] idempotent). No-op outside of
+  /// [GameOverShowScore] state.
+  Future<void> submitIfPending() async {
+    final s = state;
+    if (s is GameOverShowScore) await _submit(s.board);
+  }
+
   /// True when the player ran out of moves, a merge still exists, and the daily
   /// ad-continue allowance is not exhausted. Deadlock is never ad-revivable.
   bool get canOfferAd {

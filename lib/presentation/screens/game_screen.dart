@@ -196,7 +196,10 @@ class _GameScreenState extends State<GameScreen> {
       onDoubleCoins: () => _watchDoubleCoins(context, cubit),
       canOfferAd: cubit.canOfferAd,
       onWatchAd: () => _watchRewarded(context, cubit),
-      onMainMenu: () => Navigator.of(context).pop(),
+      onMainMenu: () async {
+        await cubit.submitIfPending();
+        if (context.mounted) Navigator.of(context).pop();
+      },
     );
   }
 

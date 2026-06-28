@@ -289,10 +289,64 @@ class EngagementCubit extends Cubit<EngagementState> {
   }
 
   // ---------------------------------------------------------------------------
-  // Weekly prize constants
+  // Daily / weekly / monthly prize constants
   // ---------------------------------------------------------------------------
 
+  /// Minimal daily top-3 coin rewards.
+  static const _dailyCoins = {1: 50, 2: 30, 3: 15};
+
   static const _weeklyCoins = {1: 500, 2: 250, 3: 100};
+
+  /// Big monthly top-3 coin rewards.
+  static const _monthlyCoins = {1: 2000, 2: 1000, 3: 500};
+
+  // ---------------------------------------------------------------------------
+  // Daily prize helpers
+  // ---------------------------------------------------------------------------
+
+  /// Check if the player placed top-3 in yesterday's daily leaderboard for any
+  /// non-challenge tier. Idempotent: the `lastDailyPrizeDate` guard prevents
+  /// double-granting. [fetchFn] matches [LeaderboardService.fetch]'s signature.
+  Future<void> checkDailyPrizes(
+    Future<List<LeaderboardEntry>> Function({
+      required Difficulty difficulty,
+      required String date,
+    }) fetchFn,
+  ) async {
+    final today = todayProvider();
+    final yesterday = DateTime.parse(today)
+        .subtract(const Duration(days: 1))
+        .toIso8601String()
+        .substring(0, 10);
+
+    final profile = storage.loadProfile();
+    if (profile.lastDailyPrizeDate == yesterday) return;
+
+    int? bestRank;
+    for (final difficulty in Difficulty.values) {
+      if (difficulty == Difficulty.challenge) continue;
+      try {
+        final entries = await fetchFn(difficulty: difficulty, date: yesterday);
+        final myEntry = entries.where((e) => e.isMe).firstOrNull;
+        if (myEntry == null) continue;
+        if (_dailyCoins.containsKey(myEntry.rank)) {
+          if (bestRank == null || myEntry.rank < bestRank) {
+            bestRank = myEntry.rank;
+          }
+        }
+      } catch (_) {
+        return; // network failure: skip; retry on next app open
+      }
+    }
+
+    final coins = bestRank != null ? (_dailyCoins[bestRank] ?? 0) : 0;
+    final updatedProfile = profile.copyWith(
+      lastDailyPrizeDate: yesterday,
+      coins: profile.coins + coins,
+    );
+    await storage.saveProfile(updatedProfile);
+    if (coins > 0) emit(state.copyWith(coins: updatedProfile.coins));
+  }
 
   // ---------------------------------------------------------------------------
   // Weekly prize helpers
@@ -373,6 +427,73 @@ class EngagementCubit extends Cubit<EngagementState> {
       coins: updatedProfile.coins,
       weeklyPrizes: updatedProfile.weeklyPrizes,
     ));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Monthly prize helpers
+  // ---------------------------------------------------------------------------
+
+  /// `YYYY-MM` for the calendar month BEFORE [today].
+  static String _lastMonthKey(String today) {
+    final d = DateTime.parse(today);
+    final prev = DateTime.utc(d.year, d.month - 1, 1);
+    return '${prev.year.toString().padLeft(4, '0')}-${prev.month.toString().padLeft(2, '0')}';
+  }
+
+  static String _firstOfMonth(String yyyyMM) => '$yyyyMM-01';
+
+  static String _lastOfMonth(String yyyyMM) {
+    final parts = yyyyMM.split('-');
+    final year = int.parse(parts[0]);
+    final month = int.parse(parts[1]);
+    // Last day = day 0 of next month.
+    final last = DateTime.utc(year, month + 1, 0);
+    return '${last.year.toString().padLeft(4, '0')}-${last.month.toString().padLeft(2, '0')}-${last.day.toString().padLeft(2, '0')}';
+  }
+
+  /// Check if the player placed top-3 in last calendar month's leaderboard for
+  /// any non-challenge tier. Idempotent: `lastMonthlyPrizeMonth` guards it.
+  Future<void> checkMonthlyPrizes(
+    Future<List<LeaderboardEntry>> Function({
+      required Difficulty difficulty,
+      required String from,
+      required String to,
+    }) fetchPeriod,
+  ) async {
+    final today = todayProvider();
+    final monthKey = _lastMonthKey(today);
+
+    final profile = storage.loadProfile();
+    if (profile.lastMonthlyPrizeMonth == monthKey) return;
+
+    final from = _firstOfMonth(monthKey);
+    final to = _lastOfMonth(monthKey);
+
+    int? bestRank;
+    for (final difficulty in Difficulty.values) {
+      if (difficulty == Difficulty.challenge) continue;
+      try {
+        final entries =
+            await fetchPeriod(difficulty: difficulty, from: from, to: to);
+        final myEntry = entries.where((e) => e.isMe).firstOrNull;
+        if (myEntry == null) continue;
+        if (_monthlyCoins.containsKey(myEntry.rank)) {
+          if (bestRank == null || myEntry.rank < bestRank) {
+            bestRank = myEntry.rank;
+          }
+        }
+      } catch (_) {
+        return;
+      }
+    }
+
+    final coins = bestRank != null ? (_monthlyCoins[bestRank] ?? 0) : 0;
+    final updatedProfile = profile.copyWith(
+      lastMonthlyPrizeMonth: monthKey,
+      coins: profile.coins + coins,
+    );
+    await storage.saveProfile(updatedProfile);
+    if (coins > 0) emit(state.copyWith(coins: updatedProfile.coins));
   }
 
   // ---------------------------------------------------------------------------

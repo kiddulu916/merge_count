@@ -31,9 +31,13 @@ extension LeaderboardPeriodX on LeaderboardPeriod {
       case LeaderboardPeriod.daily:
         return (today, today);
       case LeaderboardPeriod.weekly:
-        return (_fmt(t.subtract(const Duration(days: 6))), today);
+        // Calendar week: Monday of the current ISO week → today.
+        // Matches the [from, to] range used by checkWeeklyPrizes.
+        final daysSinceMonday = (t.weekday - 1) % 7;
+        return (_fmt(t.subtract(Duration(days: daysSinceMonday))), today);
       case LeaderboardPeriod.monthly:
-        return (_fmt(t.subtract(const Duration(days: 29))), today);
+        // Calendar month: 1st of the current month → today.
+        return (_fmt(DateTime.utc(t.year, t.month, 1)), today);
       case LeaderboardPeriod.allTime:
         // Launch floor; well before any real score exists.
         return ('2020-01-01', today);

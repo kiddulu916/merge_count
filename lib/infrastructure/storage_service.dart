@@ -190,6 +190,14 @@ class PlayerProfile {
   /// once-per-day claiming. Migration-free default null.
   final String? lastChallengeCheckDate;
 
+  /// UTC date of the last daily-prize check (`YYYY-MM-DD`). Guards
+  /// once-per-day claiming. Migration-free default null.
+  final String? lastDailyPrizeDate;
+
+  /// `YYYY-MM` string of the last monthly-prize check. Guards
+  /// once-per-month claiming. Migration-free default null.
+  final String? lastMonthlyPrizeMonth;
+
   const PlayerProfile({
     this.dailyActiveStreak = 0,
     this.lastActiveDate,
@@ -212,6 +220,8 @@ class PlayerProfile {
     this.lastWeeklyPrizeDate,
     this.weeklyPrizes = const [],
     this.lastChallengeCheckDate,
+    this.lastDailyPrizeDate,
+    this.lastMonthlyPrizeMonth,
   });
 
   static const empty = PlayerProfile();
@@ -241,6 +251,10 @@ class PlayerProfile {
     List<WeeklyPrize>? weeklyPrizes,
     String? lastChallengeCheckDate,
     bool clearLastChallengeCheckDate = false,
+    String? lastDailyPrizeDate,
+    bool clearLastDailyPrizeDate = false,
+    String? lastMonthlyPrizeMonth,
+    bool clearLastMonthlyPrizeMonth = false,
   }) =>
       PlayerProfile(
         dailyActiveStreak: dailyActiveStreak ?? this.dailyActiveStreak,
@@ -271,6 +285,12 @@ class PlayerProfile {
         lastChallengeCheckDate: clearLastChallengeCheckDate
             ? null
             : (lastChallengeCheckDate ?? this.lastChallengeCheckDate),
+        lastDailyPrizeDate: clearLastDailyPrizeDate
+            ? null
+            : (lastDailyPrizeDate ?? this.lastDailyPrizeDate),
+        lastMonthlyPrizeMonth: clearLastMonthlyPrizeMonth
+            ? null
+            : (lastMonthlyPrizeMonth ?? this.lastMonthlyPrizeMonth),
       );
 
   Map<String, dynamic> toJson() => {
@@ -295,6 +315,8 @@ class PlayerProfile {
         'lastWeeklyPrizeDate': lastWeeklyPrizeDate,
         'weeklyPrizes': weeklyPrizes.map((p) => p.toJson()).toList(),
         'lastChallengeCheckDate': lastChallengeCheckDate,
+        'lastDailyPrizeDate': lastDailyPrizeDate,
+        'lastMonthlyPrizeMonth': lastMonthlyPrizeMonth,
       };
 
   static PlayerProfile fromJson(Map<String, dynamic> j) => PlayerProfile(
@@ -337,6 +359,8 @@ class PlayerProfile {
             .map((e) => WeeklyPrize.fromJson(Map<String, dynamic>.from(e as Map)))
             .toList(),
         lastChallengeCheckDate: j['lastChallengeCheckDate'] as String?,
+        lastDailyPrizeDate: j['lastDailyPrizeDate'] as String?,
+        lastMonthlyPrizeMonth: j['lastMonthlyPrizeMonth'] as String?,
       );
 }
 
